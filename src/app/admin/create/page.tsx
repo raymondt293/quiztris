@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight, Plus, Trash2, ImageIcon, Save, Eye, X, Setti
 import QuestionList from "~/components/admin/question-list"
 import QuestionPreview from "~/components/admin/question-preview"
 import { useRouter } from "next/navigation"
+import Image from "next/image";
 
 // Types
 type Answer = {
@@ -329,7 +330,7 @@ export default function CreateQuizPage() {
               {currentQuestion.media ? (
                 <div className="border rounded-md p-4 flex items-center justify-center">
                   {currentQuestion.media.type === "image" && (
-                    <img
+                    <Image
                       src={currentQuestion.media.url || "/placeholder.svg"}
                       alt="Question media"
                       className="max-h-[200px] object-contain"
