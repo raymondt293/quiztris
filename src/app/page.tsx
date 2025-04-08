@@ -1,37 +1,43 @@
-import Link from "next/link";
+import { Button } from "~/components/ui/button"
+import { Input } from "~/components/ui/input"
+import { Card } from "~/components/ui/card"
+import GameModes from "~/components/game-modes"
+import { ArrowRight } from "lucide-react"
 
-export default function HomePage() {
+export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-      <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-        <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-[5rem]">
-          Create <span className="text-[hsl(280,100%,70%)]">T3</span> App
-        </h1>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-8">
-          <Link
-            className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 text-white hover:bg-white/20"
-            href="https://create.t3.gg/en/usage/first-steps"
-            target="_blank"
-          >
-            <h3 className="text-2xl font-bold">First Steps →</h3>
-            <div className="text-lg">
-              Just the basics - Everything you need to know to set up your
-              database and authentication.
-            </div>
-          </Link>
-          <Link
-            className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 text-white hover:bg-white/20"
-            href="https://create.t3.gg/en/introduction"
-            target="_blank"
-          >
-            <h3 className="text-2xl font-bold">Documentation →</h3>
-            <div className="text-lg">
-              Learn more about Create T3 App, the libraries it uses, and how to
-              deploy it.
-            </div>
-          </Link>
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-50 to-purple-100">
+      <div className="w-full max-w-md space-y-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-purple-800 mb-2">Quiztris</h1>
+          <p className="text-gray-600 mb-8">Join a game or start a new one</p>
         </div>
+
+        <Card className="p-6 shadow-lg bg-white">
+          <form action="/join" className="space-y-4">
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-center">Have a game code?</h2>
+              <div className="flex space-x-2">
+                <Input name="code" placeholder="Enter game code" className="text-center text-lg tracking-wider" />
+                <Button type="submit" size="icon">
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          <div className="my-6 relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-white px-2 text-sm text-gray-500">or choose a game mode</span>
+            </div>
+          </div>
+
+          <GameModes />
+        </Card>
       </div>
     </main>
-  );
+  )
 }
