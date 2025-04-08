@@ -65,8 +65,8 @@ type QuizAction =
   | { type: "UPDATE_QUIZ_META"; payload: { field: keyof Quiz; value: string } }
   | { type: "ADD_QUESTION" }
   | { type: "REMOVE_QUESTION"; payload: { questionId: string } }
-  | { type: "UPDATE_QUESTION"; payload: { questionId: string; field: keyof Question; value: any } }
-  | { type: "UPDATE_ANSWER"; payload: { questionId: string; answerId: string; field: keyof Answer; value: any } }
+  | { type: "UPDATE_QUESTION"; payload: { questionId: string; field: keyof Question; value: Question[keyof Question] } }
+  | { type: "UPDATE_ANSWER"; payload: { questionId: string; answerId: string; field: keyof Answer; value: Answer[keyof Answer] } }
   | { type: "ADD_ANSWER"; payload: { questionId: string } }
   | { type: "REMOVE_ANSWER"; payload: { questionId: string; answerId: string } }
   | { type: "SET_CORRECT_ANSWER"; payload: { questionId: string; answerId: string } }
@@ -208,6 +208,8 @@ export default function CreateQuizPage() {
   const [showPreview, setShowPreview] = useState(false)
 
   const currentQuestion = quiz.questions[currentQuestionIndex]
+
+  if (!currentQuestion) return <div>No question selected.</div>
 
   const handleSave = () => {
     // In a real app, this would save to a database
@@ -464,7 +466,7 @@ export default function CreateQuizPage() {
               </Label>
               <Select
                 value={currentQuestion.type}
-                onValueChange={(value: any) =>
+                onValueChange={(value: Question["type"]) =>
                   dispatch({
                     type: "UPDATE_QUESTION",
                     payload: { questionId: currentQuestion.id, field: "type", value },
