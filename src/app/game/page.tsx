@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { Button } from "~/components/ui/button"
 import { Card } from "~/components/ui/card"
 import { Progress } from "~/components/ui/progress"
@@ -25,6 +25,21 @@ export default function GamePage() {
   const [questionNumber, setQuestionNumber] = useState(1)
   const [totalQuestions] = useState(10)
 
+  const handleTimeUp = useCallback(() => {
+    setIsAnswered(true)
+  
+    setTimeout(() => {
+      if (questionNumber < totalQuestions) {
+        setQuestionNumber(questionNumber + 1)
+        setTimeLeft(mockQuestion.timeLimit)
+        setSelectedAnswer(null)
+        setIsAnswered(false)
+      } else {
+        router.push("/game-over")
+      }
+    }, 2000)
+  }, [questionNumber, router, totalQuestions])
+
   useEffect(() => {
     if (timeLeft > 0 && !isAnswered) {
       const timer = setTimeout(() => {
@@ -34,7 +49,7 @@ export default function GamePage() {
     } else if (timeLeft === 0 && !isAnswered) {
       handleTimeUp()
     }
-  }, [timeLeft, isAnswered])
+  }, [timeLeft, isAnswered, handleTimeUp])
 
   const handleAnswerSelect = (answer: string) => {
     if (isAnswered) return
@@ -61,22 +76,7 @@ export default function GamePage() {
     }, 2000)
   }
 
-  const handleTimeUp = () => {
-    setIsAnswered(true)
-
-    // Move to next question after 2 seconds
-    setTimeout(() => {
-      if (questionNumber < totalQuestions) {
-        setQuestionNumber(questionNumber + 1)
-        setTimeLeft(mockQuestion.timeLimit)
-        setSelectedAnswer(null)
-        setIsAnswered(false)
-      } else {
-        router.push("/game-over")
-      }
-    }, 2000)
-  }
-
+  
   const getButtonClass = (option: string) => {
     if (!isAnswered) return ""
     if (option === mockQuestion.correctAnswer) return "bg-green-500 hover:bg-green-600"

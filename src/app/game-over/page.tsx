@@ -21,7 +21,7 @@ export default function GameOverPage() {
       <div className="w-full max-w-2xl space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-purple-800 mb-2">Game Over!</h1>
-          <p className="text-gray-600 mb-8">Here's how everyone performed</p>
+          <p className="text-gray-600 mb-8">Here&apos;s how everyone performed</p>
         </div>
 
         <Card className="shadow-lg bg-white overflow-hidden">
