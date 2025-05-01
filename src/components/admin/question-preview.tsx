@@ -1,4 +1,5 @@
 import { Card } from "~/components/ui/card"
+import Image from "next/image"
 
 type Answer = {
   id: string
@@ -50,9 +51,11 @@ export default function QuestionPreview({ quiz }: QuestionPreviewProps) {
 
             {question.media && (
               <div className="mb-6 flex justify-center">
-                <img
+                <Image
                   src={question.media.url || "/placeholder.svg"}
                   alt="Question media"
+                  width={400}
+                  height={200}
                   className="max-h-[200px] object-contain rounded-md"
                 />
               </div>
