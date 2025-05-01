@@ -5,8 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
 import Link from "next/link"
 
 export default function JoinPage({ searchParams }: { searchParams: { code?: string; mode?: string } }) {
-  const gameCode = searchParams.code || ""
-  const gameMode = searchParams.mode || "normal"
+  const gameCode = searchParams.code ?? ""
+  const gameMode = searchParams.mode ?? "normal"
 
   const getGameModeTitle = (mode: string) => {
     const modes: Record<string, string> = {
@@ -16,7 +16,7 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
       "sudden-death": "Sudden Death",
       practice: "Practice Mode",
     }
-    return modes[mode] || "Game"
+    return modes[mode] ?? "Game"
   }
 
   return (
