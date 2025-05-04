@@ -39,14 +39,17 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.2.0",
     "tw-animate-css": "^1.2.5",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.0.15",
-    "@types/node": "^20.14.10",
+    "@types/node": "^20.17.30",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.0",
     "eslint": "^9.23.0",
     "eslint-config-next": "^15.2.3",
@@ -55,7 +58,8 @@
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
     "tailwindcss": "^4.0.15",
-    "typescript": "^5.8.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
     "typescript-eslint": "^8.27.0"
   },
   "ct3aMetadata": {

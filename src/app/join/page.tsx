@@ -2,10 +2,8 @@ import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Card } from "~/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
-import Link from "next/link"
 
-export default function JoinPage({ searchParams }: { searchParams: { code?: string; mode?: string } }) {
-  const gameCode = searchParams.code ?? ""
+export default function JoinPage({ searchParams }: { searchParams: { mode?: string } }) {
   const gameMode = searchParams.mode ?? "normal"
 
   const getGameModeTitle = (mode: string) => {
@@ -25,7 +23,7 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
         <Card className="p-6 shadow-lg bg-white">
           <div className="text-center mb-6">
             <h1 className="text-2xl font-bold text-purple-800">
-              {gameCode ? `Joining Game: ${gameCode}` : `Joining ${getGameModeTitle(gameMode)}`}
+              {`Joining ${getGameModeTitle(gameMode)}`}
             </h1>
             <p className="text-gray-600 mt-2">Enter your name or sign in to continue</p>
           </div>
@@ -37,46 +35,29 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
             </TabsList>
 
             <TabsContent value="guest">
-              <form action="/game" className="space-y-4">
-                <input type="hidden" name="gameCode" value={gameCode} />
+              <form action="/waiting-room" className="space-y-4">
                 <input type="hidden" name="gameMode" value={gameMode} />
-
                 <div className="space-y-2">
                   <Input name="playerName" placeholder="Enter your name" required className="text-center text-lg" />
                 </div>
-
                 <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700">
-                  Join Game
+                  Join Room
                 </Button>
               </form>
             </TabsContent>
 
             <TabsContent value="account">
-              <form action="/game" className="space-y-4">
-                <input type="hidden" name="gameCode" value={gameCode} />
+              <form action="/waiting-room" className="space-y-4">
                 <input type="hidden" name="gameMode" value={gameMode} />
-
                 <div className="space-y-2">
                   <Input name="email" type="email" placeholder="Email" required />
                 </div>
-
                 <div className="space-y-2">
                   <Input name="password" type="password" placeholder="Password" required />
                 </div>
-
                 <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700">
                   Sign In & Join
                 </Button>
-
-                <div className="text-center text-sm text-gray-500">
-                  <Link href="#" className="text-purple-600 hover:underline">
-                    Forgot password?
-                  </Link>
-                  {" | "}
-                  <Link href="#" className="text-purple-600 hover:underline">
-                    Create account
-                  </Link>
-                </div>
               </form>
             </TabsContent>
           </Tabs>
