@@ -85,22 +85,22 @@ export default function WaitingRoomPage() {
             break
 
           case "GAME_START":
-            router.push("/game")
+            router.push("/game" as string)
             break
 
           case "KICKED":
             alert("You were kicked.")
-            router.push("/")
+            router.push("/" as string)
             break
 
           case "ROOM_CLOSED":
             alert("Room closed.")
-            router.push("/")
+            router.push("/" as string)
             break
 
           case "ERROR":
             alert(data.message)
-            router.push("/")
+            router.push("/" as string)
             break
         }
       } catch (err) {
