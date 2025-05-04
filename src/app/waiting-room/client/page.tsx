@@ -1,13 +1,12 @@
-"use client"
-export const dynamic = "force-dynamic";
+"use client";
+import { Suspense } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Button } from "~/components/ui/button"
-import { Card } from "~/components/ui/card"
-
-type Player = { id: string; name: string }
-type ChatMessage = { sender: string; message: string; timestamp: string }
+type Player = { id: string; name: string };
+type ChatMessage = { sender: string; message: string; timestamp: string };
 
 type ServerMessage =
   | { type: "ROOM_CREATED"; roomCode: string; playerId: string }
@@ -16,60 +15,66 @@ type ServerMessage =
   | { type: "GAME_START" }
   | { type: "KICKED" }
   | { type: "ROOM_CLOSED" }
-  | { type: "ERROR"; message: string }
+  | { type: "ERROR"; message: string };
 
-export default function WaitingRoomPage() {
-  const [ws, setWs] = useState<WebSocket | null>(null)
-  const [players, setPlayers] = useState<Player[]>([])
-  const [roomCode, setRoomCode] = useState("")
-  const [playerId, setPlayerId] = useState("")
-  const [hostId, setHostId] = useState("")
-  const [chat, setChat] = useState<ChatMessage[]>([])
-  const [message, setMessage] = useState("")
+function WaitingRoomClient() {
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [roomCode, setRoomCode] = useState("");
+  const [playerId, setPlayerId] = useState("");
+  const [hostId, setHostId] = useState("");
+  const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [message, setMessage] = useState("");
 
-  const router = useRouter()
-  const params = useSearchParams()
+  const router = useRouter();
+  const params = useSearchParams();
 
-  const mode = params.get("mode") ?? "create"
-  const codeParam = params.get("code") ?? ""
-  const nameParam = params.get("name") ?? ""
+  const mode = params.get("mode") ?? "create";
+  const codeParam = params.get("code") ?? "";
+  const nameParam = params.get("name") ?? "";
 
-  const joined = useRef(false)
+  const joined = useRef(false);
 
   const connectWebSocket = useCallback(() => {
-    const socket = new WebSocket("ws://localhost:3001")
+    const socket = new WebSocket("ws://localhost:3001");
 
     socket.onopen = () => {
       if (mode === "create" && nameParam) {
-        socket.send(JSON.stringify({ type: "CREATE_ROOM", name: nameParam }))
+        socket.send(JSON.stringify({ type: "CREATE_ROOM", name: nameParam }));
       } else if (mode === "join" && codeParam && nameParam) {
-        socket.send(JSON.stringify({ type: "JOIN_ROOM", roomCode: codeParam, name: nameParam }))
+        socket.send(
+          JSON.stringify({
+            type: "JOIN_ROOM",
+            roomCode: codeParam,
+            name: nameParam,
+          })
+        );
       }
-    }
+    };
 
     socket.onmessage = (event: MessageEvent) => {
       try {
-        if (typeof event.data !== "string") return
-        const data = JSON.parse(event.data) as ServerMessage
+        if (typeof event.data !== "string") return;
+        const data = JSON.parse(event.data) as ServerMessage;
 
         switch (data.type) {
           case "ROOM_CREATED":
-            setRoomCode(data.roomCode)
-            setPlayerId(data.playerId)
-            setHostId(data.playerId)
-            break
+            setRoomCode(data.roomCode);
+            setPlayerId(data.playerId);
+            setHostId(data.playerId);
+            break;
 
           case "PLAYER_LIST":
-            setPlayers(data.players)
-            setHostId(data.hostId)
-            break
+            setPlayers(data.players);
+            setHostId(data.hostId);
+            break;
 
           case "CHAT_MESSAGE":
             {
               const timestamp = new Date().toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
-              })
+              });
               setChat((prev) => [
                 ...prev,
                 {
@@ -77,81 +82,80 @@ export default function WaitingRoomPage() {
                   message: data.message,
                   timestamp,
                 },
-              ])
-
+              ]);
               setTimeout(() => {
-                const chatBox = document.querySelector(".chat-scroll")
-                chatBox?.scrollTo({ top: chatBox.scrollHeight, behavior: "smooth" })
-              }, 0)
+                const chatBox = document.querySelector(".chat-scroll");
+                chatBox?.scrollTo({ top: chatBox.scrollHeight, behavior: "smooth" });
+              }, 0);
             }
-            break
+            break;
 
           case "GAME_START":
-            router.push("/game")
-            break
+            router.push("/game");
+            break;
 
           case "KICKED":
-            alert("You were kicked.")
-            router.push("/")
-            break
+            alert("You were kicked.");
+            router.push("/");
+            break;
 
           case "ROOM_CLOSED":
-            alert("Room closed.")
-            router.push("/")
-            break
+            alert("Room closed.");
+            router.push("/");
+            break;
 
           case "ERROR":
-            alert(data.message)
-            router.push("/")
-            break
+            alert(data.message);
+            router.push("/");
+            break;
         }
       } catch (err) {
-        console.error("Failed to parse WebSocket message", err)
+        console.error("Failed to parse WebSocket message", err);
       }
-    }
+    };
 
-    setWs(socket)
-  }, [mode, nameParam, codeParam, router])
+    setWs(socket);
+  }, [mode, nameParam, codeParam, router]);
 
   useEffect(() => {
     if (!joined.current && nameParam) {
-      joined.current = true
-      connectWebSocket()
+      joined.current = true;
+      connectWebSocket();
     }
-  }, [nameParam, connectWebSocket])
+  }, [nameParam, connectWebSocket]);
 
   const startGame = () => {
     if (ws && roomCode) {
-      ws.send(JSON.stringify({ type: "START_GAME", roomCode }))
+      ws.send(JSON.stringify({ type: "START_GAME", roomCode }));
     }
-  }
+  };
 
   const kickPlayer = (id: string) => {
     if (ws && roomCode) {
-      ws.send(JSON.stringify({ type: "KICK_PLAYER", roomCode, playerId: id }))
+      ws.send(JSON.stringify({ type: "KICK_PLAYER", roomCode, playerId: id }));
     }
-  }
+  };
 
   const leaveRoom = () => {
     if (ws && roomCode && playerId) {
-      ws.send(JSON.stringify({ type: "LEAVE_ROOM", roomCode, playerId }))
-      router.push("/")
+      ws.send(JSON.stringify({ type: "LEAVE_ROOM", roomCode, playerId }));
+      router.push("/");
     }
-  }
+  };
 
   const sendMessage = () => {
     if (ws && message.trim()) {
-      ws.send(JSON.stringify({ type: "CHAT_MESSAGE", roomCode, message }))
-      setMessage("")
+      ws.send(JSON.stringify({ type: "CHAT_MESSAGE", roomCode, message }));
+      setMessage("");
     }
-  }
+  };
 
   if (!joined.current) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-purple-100 p-6">
         <h1 className="text-xl font-bold text-purple-800">Connecting to Room...</h1>
       </main>
-    )
+    );
   }
 
   return (
@@ -169,7 +173,8 @@ export default function WaitingRoomPage() {
             {players.map((p) => (
               <li key={p.id} className="flex justify-between items-center border-b pb-2">
                 <span>
-                  {p.name} {p.id === hostId && <span className="text-sm text-purple-600">(Host)</span>}
+                  {p.name}{" "}
+                  {p.id === hostId && <span className="text-sm text-purple-600">(Host)</span>}
                 </span>
                 {playerId === hostId && p.id !== hostId && (
                   <Button variant="destructive" size="sm" onClick={() => kickPlayer(p.id)}>
@@ -181,7 +186,10 @@ export default function WaitingRoomPage() {
           </ul>
 
           {playerId === hostId && (
-            <Button onClick={startGame} className="w-full bg-green-600 text-white hover:bg-green-700">
+            <Button
+              onClick={startGame}
+              className="w-full bg-green-600 text-white hover:bg-green-700"
+            >
               Start Game
             </Button>
           )}
@@ -224,14 +232,29 @@ export default function WaitingRoomPage() {
           />
           <button
             onClick={sendMessage}
-            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              className="w-5 h-5"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-4 7 4 7-14-7z" />
             </svg>
           </button>
         </div>
       </div>
     </main>
-  )
+  );
+}
+
+export default function WaitingRoomPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading Waiting Room...</div>}>
+      <WaitingRoomClient />
+    </Suspense>
+  );
 }
