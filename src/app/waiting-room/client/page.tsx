@@ -6,6 +6,7 @@ import { Button } from "~/components/ui/button"
 import { Card } from "~/components/ui/card"
 
 type Player = { id: string; name: string }
+type ChatMessage = { sender: string; message: string; timestamp: string }
 
 export default function WaitingRoomPage() {
   const [ws, setWs] = useState<WebSocket | null>(null)
@@ -13,6 +14,8 @@ export default function WaitingRoomPage() {
   const [roomCode, setRoomCode] = useState("")
   const [playerId, setPlayerId] = useState("")
   const [hostId, setHostId] = useState("")
+  const [chat, setChat] = useState<ChatMessage[]>([])
+  const [message, setMessage] = useState("")
 
   const router = useRouter()
   const params = useSearchParams()
@@ -44,7 +47,17 @@ export default function WaitingRoomPage() {
       }
       if (data.type === "PLAYER_LIST") {
         setPlayers(data.players)
-        setHostId(data.hostId) // <-- important!
+        setHostId(data.hostId)
+      }
+      if (data.type === "CHAT_MESSAGE") {
+        const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        setChat((prev) => [...prev, { sender: data.sender || "System", message: data.message, timestamp }])
+
+        // Auto scroll to bottom
+        setTimeout(() => {
+          const chatBox = document.querySelector(".chat-scroll")
+          chatBox?.scrollTo({ top: chatBox.scrollHeight, behavior: "smooth" })
+        }, 0)
       }
       if (data.type === "GAME_START") {
         router.push("/game")
@@ -85,6 +98,13 @@ export default function WaitingRoomPage() {
     }
   }
 
+  const sendMessage = () => {
+    if (ws && message.trim()) {
+      ws.send(JSON.stringify({ type: "CHAT_MESSAGE", roomCode, message }))
+      setMessage("")
+    }
+  }
+
   if (!joined.current) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-purple-100 p-6">
@@ -94,8 +114,8 @@ export default function WaitingRoomPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-purple-100 p-6">
-      <div className="w-full max-w-md">
+    <main className="min-h-screen flex flex-row bg-purple-50">
+      <div className="flex-1 p-6">
         <Card className="p-6 shadow-lg bg-white space-y-6">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-purple-800">
@@ -104,7 +124,7 @@ export default function WaitingRoomPage() {
             <p className="text-gray-600">Waiting for players...</p>
           </div>
 
-          <ul className="space-y-2">
+          <ul className="space-y-2 max-h-72 overflow-y-auto">
             {players.map((p) => (
               <li key={p.id} className="flex justify-between items-center border-b pb-2">
                 <span>
@@ -125,6 +145,43 @@ export default function WaitingRoomPage() {
             </Button>
           )}
         </Card>
+      </div>
+
+      <div className="w-full max-w-sm h-screen border-l bg-white flex flex-col justify-between">
+        <div className="px-4 py-3 border-b">
+          <h2 className="text-lg font-semibold text-gray-800">Chat</h2>
+        </div>
+
+        <div className="chat-scroll flex-1 overflow-y-auto px-4 py-2 space-y-4 text-sm">
+          {chat.map((chatMsg, idx) => (
+            <div key={idx}>
+              <div className="flex justify-between font-semibold">
+                <span>{chatMsg.sender}</span>
+                <span className="text-xs text-gray-400">{chatMsg.timestamp}</span>
+              </div>
+              <div className="ml-1 text-gray-700">{chatMsg.message}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 p-3 border-t">
+          <input
+            type="text"
+            className="flex-1 border rounded-full px-4 py-2 text-sm"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            placeholder="Type a message..."
+          />
+          <button
+            onClick={sendMessage}
+            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+              stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-4 7 4 7-14-7z" />
+            </svg>
+          </button>
+        </div>
       </div>
     </main>
   )

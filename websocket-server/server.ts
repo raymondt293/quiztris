@@ -14,6 +14,7 @@ interface Room {
 
 const wss = new WebSocketServer({ port: 3001 })
 const rooms: Record<string, Room> = {}
+const clientNames: Record<string, string> = {}
 
 wss.on('connection', (ws: WebSocket) => {
   const clientId = uuidv4()
@@ -32,6 +33,8 @@ wss.on('connection', (ws: WebSocket) => {
       const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase()
       const hostName = data.name || 'Host'
 
+      clientNames[clientId] = hostName 
+
       rooms[roomCode] = {
         host: clientId,
         players: [{ id: clientId, name: hostName }],
@@ -41,8 +44,7 @@ wss.on('connection', (ws: WebSocket) => {
       ws.send(
         JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId })
       )
-
-      // Immediately broadcast updated player list
+      
       broadcastToRoom(roomCode, {
         type: 'PLAYER_LIST',
         players: rooms[roomCode].players,
@@ -65,11 +67,22 @@ wss.on('connection', (ws: WebSocket) => {
 
       room.players.push({ id: clientId, name: data.name })
       room.sockets[clientId] = ws
+      clientNames[clientId] = data.name
+
+      ws.send(
+        JSON.stringify({ type: 'ROOM_CREATED', roomCode: data.roomCode, playerId: clientId })
+      )
 
       broadcastToRoom(data.roomCode, {
         type: 'PLAYER_LIST',
         players: room.players,
         hostId: room.host,
+      })
+
+      broadcastToRoom(data.roomCode, {
+        type: 'CHAT_MESSAGE',
+        sender: 'System',
+        message: `${data.name} joined the room.`,
       })
     }
 
@@ -77,6 +90,7 @@ wss.on('connection', (ws: WebSocket) => {
       const room = rooms[data.roomCode]
       if (!room || room.host !== clientId) return
 
+      const kickedPlayer = room.players.find(p => p.id === data.playerId)
       const kickedWs = room.sockets[data.playerId]
       if (kickedWs) {
         kickedWs.send(JSON.stringify({ type: 'KICKED' }))
@@ -85,11 +99,31 @@ wss.on('connection', (ws: WebSocket) => {
 
       room.players = room.players.filter((p) => p.id !== data.playerId)
       delete room.sockets[data.playerId]
+      delete clientNames[data.playerId]
 
       broadcastToRoom(data.roomCode, {
         type: 'PLAYER_LIST',
         players: room.players,
         hostId: room.host,
+      })
+
+      broadcastToRoom(data.roomCode, {
+        type: 'CHAT_MESSAGE',
+        sender: 'System',
+        message: `${kickedPlayer?.name || 'A player'} was kicked.`,
+      })
+    }
+
+    if (data.type === 'CHAT_MESSAGE') {
+      const room = rooms[data.roomCode]
+      const senderName = clientNames[clientId] || "Unknown"
+
+      if (!room) return
+
+      broadcastToRoom(data.roomCode, {
+        type: 'CHAT_MESSAGE',
+        sender: senderName,
+        message: data.message,
       })
     }
 
@@ -102,7 +136,9 @@ wss.on('connection', (ws: WebSocket) => {
     for (const [code, room] of Object.entries(rooms)) {
       if (room.sockets[clientId]) {
         delete room.sockets[clientId]
+        const leavingPlayer = room.players.find(p => p.id === clientId)
         room.players = room.players.filter((p) => p.id !== clientId)
+        delete clientNames[clientId]
 
         if (room.host === clientId) {
           broadcastToRoom(code, { type: 'ROOM_CLOSED' })
@@ -112,6 +148,12 @@ wss.on('connection', (ws: WebSocket) => {
             type: 'PLAYER_LIST',
             players: room.players,
             hostId: room.host,
+          })
+
+          broadcastToRoom(code, {
+            type: 'CHAT_MESSAGE',
+            sender: 'System',
+            message: `${leavingPlayer?.name || 'A player'} left the room.`,
           })
         }
       }
