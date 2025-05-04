@@ -48,6 +48,7 @@ export default function WaitingRoomPage() {
 
     socket.onmessage = (event: MessageEvent) => {
       try {
+        if (typeof event.data !== "string") return
         const data = JSON.parse(event.data) as ServerMessage
 
         switch (data.type) {
@@ -85,22 +86,22 @@ export default function WaitingRoomPage() {
             break
 
           case "GAME_START":
-            router.push("/game" as string)
+            router.push("/game")
             break
 
           case "KICKED":
             alert("You were kicked.")
-            router.push("/" as string)
+            router.push("/")
             break
 
           case "ROOM_CLOSED":
             alert("Room closed.")
-            router.push("/" as string)
+            router.push("/")
             break
 
           case "ERROR":
             alert(data.message)
-            router.push("/" as string)
+            router.push("/")
             break
         }
       } catch (err) {
@@ -127,6 +128,13 @@ export default function WaitingRoomPage() {
   const kickPlayer = (id: string) => {
     if (ws && roomCode) {
       ws.send(JSON.stringify({ type: "KICK_PLAYER", roomCode, playerId: id }))
+    }
+  }
+
+  const leaveRoom = () => {
+    if (ws && roomCode && playerId) {
+      ws.send(JSON.stringify({ type: "LEAVE_ROOM", roomCode, playerId }))
+      router.push("/")
     }
   }
 
@@ -176,6 +184,14 @@ export default function WaitingRoomPage() {
               Start Game
             </Button>
           )}
+
+          <Button
+            variant="outline"
+            className="w-full text-red-600 border-red-400 hover:bg-red-100"
+            onClick={leaveRoom}
+          >
+            Leave Room
+          </Button>
         </Card>
       </div>
 

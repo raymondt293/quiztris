@@ -114,6 +114,37 @@ wss.on('connection', (ws: WebSocket) => {
       })
     }
 
+    if (data.type === 'LEAVE_ROOM') {
+      for (const [code, room] of Object.entries(rooms)) {
+        if (room.sockets[clientId]) {
+          const leavingPlayer = room.players.find(p => p.id === clientId)
+          delete room.sockets[clientId]
+          room.players = room.players.filter(p => p.id !== clientId)
+          delete clientNames[clientId]
+
+          if (room.host === clientId) {
+            broadcastToRoom(code, { type: 'ROOM_CLOSED' })
+            delete rooms[code]
+          } else {
+            broadcastToRoom(code, {
+              type: 'PLAYER_LIST',
+              players: room.players,
+              hostId: room.host,
+            })
+
+            broadcastToRoom(code, {
+              type: 'CHAT_MESSAGE',
+              sender: 'System',
+              message: `${leavingPlayer?.name || 'A player'} left the room.`,
+            })
+          }
+
+          ws.close()
+          break
+        }
+      }
+    }
+
     if (data.type === 'CHAT_MESSAGE') {
       const room = rooms[data.roomCode]
       const senderName = clientNames[clientId] || "Unknown"
