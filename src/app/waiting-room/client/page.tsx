@@ -1,12 +1,21 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "~/components/ui/button"
 import { Card } from "~/components/ui/card"
 
 type Player = { id: string; name: string }
 type ChatMessage = { sender: string; message: string; timestamp: string }
+
+type ServerMessage =
+  | { type: "ROOM_CREATED"; roomCode: string; playerId: string }
+  | { type: "PLAYER_LIST"; players: Player[]; hostId: string }
+  | { type: "CHAT_MESSAGE"; sender?: string; message: string }
+  | { type: "GAME_START" }
+  | { type: "KICKED" }
+  | { type: "ROOM_CLOSED" }
+  | { type: "ERROR"; message: string }
 
 export default function WaitingRoomPage() {
   const [ws, setWs] = useState<WebSocket | null>(null)
@@ -26,7 +35,7 @@ export default function WaitingRoomPage() {
 
   const joined = useRef(false)
 
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     const socket = new WebSocket("ws://localhost:3001")
 
     socket.onopen = () => {
@@ -37,54 +46,77 @@ export default function WaitingRoomPage() {
       }
     }
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data)
+    socket.onmessage = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data) as ServerMessage
 
-      if (data.type === "ROOM_CREATED") {
-        setRoomCode(data.roomCode)
-        setPlayerId(data.playerId)
-        setHostId(data.playerId)
-      }
-      if (data.type === "PLAYER_LIST") {
-        setPlayers(data.players)
-        setHostId(data.hostId)
-      }
-      if (data.type === "CHAT_MESSAGE") {
-        const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        setChat((prev) => [...prev, { sender: data.sender || "System", message: data.message, timestamp }])
+        switch (data.type) {
+          case "ROOM_CREATED":
+            setRoomCode(data.roomCode)
+            setPlayerId(data.playerId)
+            setHostId(data.playerId)
+            break
 
-        // Auto scroll to bottom
-        setTimeout(() => {
-          const chatBox = document.querySelector(".chat-scroll")
-          chatBox?.scrollTo({ top: chatBox.scrollHeight, behavior: "smooth" })
-        }, 0)
-      }
-      if (data.type === "GAME_START") {
-        router.push("/game")
-      }
-      if (data.type === "KICKED") {
-        alert("You were kicked.")
-        router.push("/")
-      }
-      if (data.type === "ROOM_CLOSED") {
-        alert("Room closed.")
-        router.push("/")
-      }
-      if (data.type === "ERROR") {
-        alert(data.message)
-        router.push("/")
+          case "PLAYER_LIST":
+            setPlayers(data.players)
+            setHostId(data.hostId)
+            break
+
+          case "CHAT_MESSAGE":
+            {
+              const timestamp = new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              setChat((prev) => [
+                ...prev,
+                {
+                  sender: data.sender ?? "System",
+                  message: data.message,
+                  timestamp,
+                },
+              ])
+
+              setTimeout(() => {
+                const chatBox = document.querySelector(".chat-scroll")
+                chatBox?.scrollTo({ top: chatBox.scrollHeight, behavior: "smooth" })
+              }, 0)
+            }
+            break
+
+          case "GAME_START":
+            router.push("/game")
+            break
+
+          case "KICKED":
+            alert("You were kicked.")
+            router.push("/")
+            break
+
+          case "ROOM_CLOSED":
+            alert("Room closed.")
+            router.push("/")
+            break
+
+          case "ERROR":
+            alert(data.message)
+            router.push("/")
+            break
+        }
+      } catch (err) {
+        console.error("Failed to parse WebSocket message", err)
       }
     }
 
     setWs(socket)
-  }
+  }, [mode, nameParam, codeParam, router])
 
   useEffect(() => {
     if (!joined.current && nameParam) {
       joined.current = true
       connectWebSocket()
     }
-  }, [nameParam])
+  }, [nameParam, connectWebSocket])
 
   const startGame = () => {
     if (ws && roomCode) {
