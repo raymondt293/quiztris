@@ -69,7 +69,7 @@ export default function GamePageClient() {
       )
     })
 
-    socket.addEventListener('message', (evt) => {
+    socket.addEventListener('message', (evt: MessageEvent<string>) => {
       const data = JSON.parse(evt.data) as ServerMessage
       switch (data.type) {
         case 'PLAYER_LIST':
