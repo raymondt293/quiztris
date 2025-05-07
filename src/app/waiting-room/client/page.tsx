@@ -1,4 +1,5 @@
 "use client";
+
 import { Suspense } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -7,12 +8,12 @@ import { Card } from "~/components/ui/card";
 
 type Player = { id: string; name: string };
 type ChatMessage = { sender: string; message: string; timestamp: string };
-
 type ServerMessage =
   | { type: "ROOM_CREATED"; roomCode: string; playerId: string }
+  | { type: "ROOM_JOINED"; roomCode: string; playerId: string }
   | { type: "PLAYER_LIST"; players: Player[]; hostId: string }
   | { type: "CHAT_MESSAGE"; sender?: string; message: string }
-  | { type: "GAME_START" }
+  | { type: "GAME_START"; startTimestamp: number }
   | { type: "KICKED" }
   | { type: "ROOM_CLOSED" }
   | { type: "ERROR"; message: string };
@@ -28,11 +29,12 @@ function WaitingRoomClient() {
 
   const router = useRouter();
   const params = useSearchParams();
-
   const mode = params.get("mode") ?? "create";
   const codeParam = params.get("code") ?? "";
   const nameParam = params.get("name") ?? "";
 
+  // keep the latest roomCode for GAME_START and GO_TO_GAME
+  const roomRef = useRef<string>(codeParam);
   const joined = useRef(false);
 
   const connectWebSocket = useCallback(() => {
@@ -43,79 +45,88 @@ function WaitingRoomClient() {
         socket.send(JSON.stringify({ type: "CREATE_ROOM", name: nameParam }));
       } else if (mode === "join" && codeParam && nameParam) {
         socket.send(
-          JSON.stringify({
-            type: "JOIN_ROOM",
-            roomCode: codeParam,
-            name: nameParam,
-          })
+          JSON.stringify({ type: "JOIN_ROOM", roomCode: codeParam, name: nameParam })
         );
       }
     };
 
-    socket.onmessage = (event: MessageEvent) => {
-      try {
-        if (typeof event.data !== "string") return;
-        const data = JSON.parse(event.data) as ServerMessage;
+    socket.onmessage = (evt) => {
+      if (typeof evt.data !== "string") return;
+      const data = JSON.parse(evt.data) as ServerMessage;
 
-        switch (data.type) {
-          case "ROOM_CREATED":
-            setRoomCode(data.roomCode);
-            setPlayerId(data.playerId);
-            setHostId(data.playerId);
-            break;
+      switch (data.type) {
+        case "ROOM_CREATED":
+          setRoomCode(data.roomCode);
+          roomRef.current = data.roomCode;
+          setPlayerId(data.playerId);
+          setHostId(data.playerId);
+          router.replace(
+            `/waiting-room/client?code=${data.roomCode}` +
+              `&mode=create&name=${encodeURIComponent(nameParam)}`
+          );
+          break;
 
-          case "PLAYER_LIST":
-            setPlayers(data.players);
-            setHostId(data.hostId);
-            break;
+        case "ROOM_JOINED":
+          setRoomCode(data.roomCode);
+          roomRef.current = data.roomCode;
+          setPlayerId(data.playerId);
+          break;
 
-          case "CHAT_MESSAGE":
-            {
-              const timestamp = new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-              setChat((prev) => [
-                ...prev,
-                {
-                  sender: data.sender ?? "System",
-                  message: data.message,
-                  timestamp,
-                },
-              ]);
-              setTimeout(() => {
-                const chatBox = document.querySelector(".chat-scroll");
-                chatBox?.scrollTo({ top: chatBox.scrollHeight, behavior: "smooth" });
-              }, 0);
-            }
-            break;
+        case "PLAYER_LIST":
+          setPlayers(data.players);
+          setHostId(data.hostId);
+          break;
+
+        case "CHAT_MESSAGE":
+          const ts = new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          setChat((c) => [
+            ...c,
+            { sender: data.sender ?? "System", message: data.message, timestamp: ts },
+          ]);
+          setTimeout(() => {
+            document
+              .querySelector(".chat-scroll")
+              ?.scrollTo({ top: 1e9, behavior: "smooth" });
+          }, 0);
+          break;
 
           case "GAME_START":
-            router.push("/game");
+            // tell server we're leaving the waiting‐room socket
+            socket.send(
+              JSON.stringify({ type: "GO_TO_GAME", roomCode: roomRef.current })
+            );
+            // close waiting‐room socket
+            socket.close();
+            // navigate into the quiz — *include isHost=true*
+            router.push(
+              `/game?code=${roomRef.current}` +
+              `&name=${encodeURIComponent(nameParam)}` +
+              `&isHost=true`
+            );
             break;
 
-          case "KICKED":
-            alert("You were kicked.");
-            router.push("/");
-            break;
+        case "KICKED":
+          alert("You were kicked.");
+          router.push("/");
+          break;
 
-          case "ROOM_CLOSED":
-            alert("Room closed.");
-            router.push("/");
-            break;
+        case "ROOM_CLOSED":
+          alert("Room closed.");
+          router.push("/");
+          break;
 
-          case "ERROR":
-            alert(data.message);
-            router.push("/");
-            break;
-        }
-      } catch (err) {
-        console.error("Failed to parse WebSocket message", err);
+        case "ERROR":
+          alert(data.message);
+          router.push("/");
+          break;
       }
     };
 
     setWs(socket);
-  }, [mode, nameParam, codeParam, router]);
+  }, [mode, codeParam, nameParam, router]);
 
   useEffect(() => {
     if (!joined.current && nameParam) {
@@ -124,127 +135,96 @@ function WaitingRoomClient() {
     }
   }, [nameParam, connectWebSocket]);
 
-  const startGame = () => {
-    if (ws && roomCode) {
-      ws.send(JSON.stringify({ type: "START_GAME", roomCode }));
-    }
-  };
-
-  const kickPlayer = (id: string) => {
-    if (ws && roomCode) {
-      ws.send(JSON.stringify({ type: "KICK_PLAYER", roomCode, playerId: id }));
-    }
-  };
-
+  const startGame = () =>
+    ws?.send(JSON.stringify({ type: "START_GAME", roomCode }));
+  const kickPlayer = (id: string) =>
+    ws?.send(JSON.stringify({ type: "KICK_PLAYER", roomCode, playerId: id }));
   const leaveRoom = () => {
-    if (ws && roomCode && playerId) {
-      ws.send(JSON.stringify({ type: "LEAVE_ROOM", roomCode, playerId }));
-      router.push("/");
-    }
+    ws?.send(JSON.stringify({ type: "LEAVE_ROOM", roomCode, playerId }));
+    router.push("/");
   };
-
   const sendMessage = () => {
-    if (ws && message.trim()) {
-      ws.send(JSON.stringify({ type: "CHAT_MESSAGE", roomCode, message }));
+    if (message.trim()) {
+      ws?.send(JSON.stringify({ type: "CHAT_MESSAGE", roomCode, message }));
       setMessage("");
     }
   };
 
   if (!joined.current) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-purple-100 p-6">
-        <h1 className="text-xl font-bold text-purple-800">Connecting to Room...</h1>
+      <main className="min-h-screen flex items-center justify-center bg-purple-50">
+        <h1 className="text-xl font-bold text-purple-800">Connecting…</h1>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex flex-row bg-purple-50">
+    <main className="min-h-screen flex">
+      {/* Player list & controls */}
       <div className="flex-1 p-6">
-        <Card className="p-6 shadow-lg bg-white space-y-6">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-purple-800">
-              Room Code: {roomCode || codeParam}
-            </h1>
-            <p className="text-gray-600">Waiting for players...</p>
-          </div>
-
-          <ul className="space-y-2 max-h-72 overflow-y-auto">
+        <Card className="p-6 space-y-4">
+          <h2 className="text-2xl font-bold">
+            Room Code: {roomCode || codeParam}
+          </h2>
+          <ul className="max-h-60 overflow-y-auto space-y-2">
             {players.map((p) => (
-              <li key={p.id} className="flex justify-between items-center border-b pb-2">
+              <li key={p.id} className="flex justify-between border-b pb-1">
                 <span>
-                  {p.name}{" "}
-                  {p.id === hostId && <span className="text-sm text-purple-600">(Host)</span>}
+                  {p.name} {p.id === hostId && "(Host)"}
                 </span>
                 {playerId === hostId && p.id !== hostId && (
-                  <Button variant="destructive" size="sm" onClick={() => kickPlayer(p.id)}>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => kickPlayer(p.id)}
+                  >
                     Kick
                   </Button>
                 )}
               </li>
             ))}
           </ul>
-
           {playerId === hostId && (
             <Button
+              className="w-full bg-green-600 text-white"
               onClick={startGame}
-              className="w-full bg-green-600 text-white hover:bg-green-700"
             >
               Start Game
             </Button>
           )}
-
-          <Button
-            variant="outline"
-            className="w-full text-red-600 border-red-400 hover:bg-red-100"
-            onClick={leaveRoom}
-          >
-            Leave Room
+          <Button variant="outline" className="w-full" onClick={leaveRoom}>
+            Leave
           </Button>
         </Card>
       </div>
 
-      <div className="w-full max-w-sm h-screen border-l bg-white flex flex-col justify-between">
-        <div className="px-4 py-3 border-b">
-          <h2 className="text-lg font-semibold text-gray-800">Chat</h2>
+      {/* Chat panel */}
+      <div className="w-80 border-l flex flex-col">
+        <div className="p-4 border-b">
+          <h3 className="font-semibold">Chat</h3>
         </div>
-
-        <div className="chat-scroll flex-1 overflow-y-auto px-4 py-2 space-y-4 text-sm">
-          {chat.map((chatMsg, idx) => (
-            <div key={idx}>
-              <div className="flex justify-between font-semibold">
-                <span>{chatMsg.sender}</span>
-                <span className="text-xs text-gray-400">{chatMsg.timestamp}</span>
+        <div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-3">
+          {chat.map((m, i) => (
+            <div key={i}>
+              <div className="flex justify-between text-sm font-semibold">
+                <span>{m.sender}</span>
+                <span>{m.timestamp}</span>
               </div>
-              <div className="ml-1 text-gray-700">{chatMsg.message}</div>
+              <div className="ml-2">{m.message}</div>
             </div>
           ))}
         </div>
-
-        <div className="flex items-center gap-2 p-3 border-t">
+        <div className="p-3 border-t flex gap-2">
           <input
-            type="text"
-            className="flex-1 border rounded-full px-4 py-2 text-sm"
+            className="flex-1 border rounded-full px-4 py-2"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder="Type a message..."
+            placeholder="Type a message…"
           />
-          <button
-            onClick={sendMessage}
-            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-              className="w-5 h-5"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-4 7 4 7-14-7z" />
-            </svg>
-          </button>
+          <Button onClick={sendMessage} size="icon">
+            ➤
+          </Button>
         </div>
       </div>
     </main>
@@ -253,7 +233,7 @@ function WaitingRoomClient() {
 
 export default function WaitingRoomPage() {
   return (
-    <Suspense fallback={<div className="p-6">Loading Waiting Room...</div>}>
+    <Suspense fallback={<div className="p-6">Loading…</div>}>
       <WaitingRoomClient />
     </Suspense>
   );
