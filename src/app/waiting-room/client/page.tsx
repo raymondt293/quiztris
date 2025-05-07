@@ -33,7 +33,13 @@ function WaitingRoomClient() {
   const codeParam = params.get("code") ?? "";
   const nameParam = params.get("name") ?? "";
 
-  // keep the latest roomCode for GAME_START and GO_TO_GAME
+  // Keep refs for hostId/playerId to use in callbacks
+  const playerIdRef = useRef<string>(playerId);
+  useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
+
+  const hostIdRef = useRef<string>(hostId);
+  useEffect(() => { hostIdRef.current = hostId; }, [hostId]);
+
   const roomRef = useRef<string>(codeParam);
   const joined = useRef(false);
 
@@ -93,20 +99,20 @@ function WaitingRoomClient() {
           }, 0);
           break;
 
-          case "GAME_START":
-            // tell server we're leaving the waiting‐room socket
-            socket.send(
-              JSON.stringify({ type: "GO_TO_GAME", roomCode: roomRef.current })
-            );
-            // close waiting‐room socket
-            socket.close();
-            // navigate into the quiz — *include isHost=true*
-            router.push(
-              `/game?code=${roomRef.current}` +
+        case "GAME_START":
+          // Notify server to navigate clients
+          socket.send(
+            JSON.stringify({ type: "GO_TO_GAME", roomCode: roomRef.current })
+          );
+          socket.close();
+          // Only the host should have isHost=true
+          const isHostFlag = playerIdRef.current === hostIdRef.current;
+          router.push(
+            `/game?code=${roomRef.current}` +
               `&name=${encodeURIComponent(nameParam)}` +
-              `&isHost=true`
-            );
-            break;
+              `&isHost=${isHostFlag}`
+          );
+          break;
 
         case "KICKED":
           alert("You were kicked.");
@@ -152,79 +158,82 @@ function WaitingRoomClient() {
 
   if (!joined.current) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-purple-50">
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-purple-100">
         <h1 className="text-xl font-bold text-purple-800">Connecting…</h1>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex">
-      {/* Player list & controls */}
-      <div className="flex-1 p-6">
-        <Card className="p-6 space-y-4">
-          <h2 className="text-2xl font-bold">
-            Room Code: {roomCode || codeParam}
-          </h2>
-          <ul className="max-h-60 overflow-y-auto space-y-2">
-            {players.map((p) => (
-              <li key={p.id} className="flex justify-between border-b pb-1">
-                <span>
-                  {p.name} {p.id === hostId && "(Host)"}
-                </span>
-                {playerId === hostId && p.id !== hostId && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => kickPlayer(p.id)}
-                  >
-                    Kick
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
+    <main className="min-h-screen flex bg-gradient-to-b from-purple-50 to-purple-100">
+      {/* Players Panel */}
+      <div className="flex-1 p-4 flex flex-col">
+        <div className="mb-4 flex justify-between items-center">
+          <h2 className="text-2xl font-bold">Room Code: {roomCode || codeParam}</h2>
+          <span className="text-sm text-gray-500">
+            Host: {players.find((p) => p.id === hostId)?.name ?? "—"}
+          </span>
+        </div>
+        <Card className="flex-1 p-6 space-y-2 overflow-y-auto">
+          {players.map((p) => (
+            <div key={p.id} className="flex justify-between items-center">
+              <span className="font-medium">
+                {p.name} {p.id === hostId && "(Host)"}
+              </span>
+              {playerId === hostId && p.id !== hostId && (
+                <Button variant="destructive" size="sm" onClick={() => kickPlayer(p.id)}>
+                  Kick
+                </Button>
+              )}
+            </div>
+          ))}
+        </Card>
+        <div className="mt-4 flex gap-2">
           {playerId === hostId && (
-            <Button
-              className="w-full bg-green-600 text-white"
-              onClick={startGame}
-            >
+            <Button className="flex-1 bg-green-600 text-white" onClick={startGame}>
               Start Game
             </Button>
           )}
-          <Button variant="outline" className="w-full" onClick={leaveRoom}>
+          <Button variant="outline" className="flex-1" onClick={leaveRoom}>
             Leave
           </Button>
-        </Card>
+        </div>
       </div>
 
-      {/* Chat panel */}
-      <div className="w-80 border-l flex flex-col">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold">Chat</h3>
+      {/* Chat Panel */}
+      <div className="w-full max-w-sm h-screen border-l bg-white flex flex-col">
+        <div className="px-4 py-3 border-b flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Chat</h2>
+          <span className="text-sm text-gray-500">
+            Players: {players.length}
+          </span>
         </div>
-        <div className="chat-scroll flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="chat-scroll flex-1 overflow-y-auto px-4 py-2 space-y-4 text-sm">
           {chat.map((m, i) => (
             <div key={i}>
-              <div className="flex justify-between text-sm font-semibold">
+              <div className="flex justify-between font-semibold">
                 <span>{m.sender}</span>
-                <span>{m.timestamp}</span>
+                <span className="text-xs text-gray-400">{m.timestamp}</span>
               </div>
-              <div className="ml-2">{m.message}</div>
+              <div className="ml-1 text-gray-700">{m.message}</div>
             </div>
           ))}
         </div>
-        <div className="p-3 border-t flex gap-2">
+        <div className="flex items-center gap-2 p-3 border-t">
           <input
-            className="flex-1 border rounded-full px-4 py-2"
+            type="text"
+            className="flex-1 border rounded-full px-4 py-2 text-sm"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder="Type a message…"
+            placeholder="Type a message..."
           />
-          <Button onClick={sendMessage} size="icon">
+          <button
+            onClick={sendMessage}
+            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
+          >
             ➤
-          </Button>
+          </button>
         </div>
       </div>
     </main>
@@ -233,7 +242,7 @@ function WaitingRoomClient() {
 
 export default function WaitingRoomPage() {
   return (
-    <Suspense fallback={<div className="p-6">Loading…</div>}>
+    <Suspense fallback={<div className="p-4">Loading…</div>}>
       <WaitingRoomClient />
     </Suspense>
   );
