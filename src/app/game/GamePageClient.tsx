@@ -1,4 +1,4 @@
-'use client'
+`use client`
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -81,7 +81,7 @@ export default function GamePageClient() {
             hour: '2-digit',
             minute: '2-digit',
           })
-          setChat((c) => [
+          setChat(c => [
             ...c,
             { sender: data.sender ?? 'System', message: data.message, timestamp: ts },
           ])
@@ -125,14 +125,19 @@ export default function GamePageClient() {
   useEffect(() => {
     if (!gameStarted) return
     if (timeLeft > 0) {
-      const t = setTimeout(() => setTimeLeft((t) => t - 1), 1000)
+      const t = setTimeout(() => setTimeLeft(t => t - 1), 1000)
       return () => clearTimeout(t)
     }
-    if (timeLeft <= 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+    // When time runs out, check if it's the last question
+    if (questionNumber >= totalQuestions) {
+      router.push('/game-over')
+      return
+    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
       wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
     }
-  }, [gameStarted, timeLeft, roomCode])
+  }, [gameStarted, timeLeft, roomCode, questionNumber, totalQuestions, router])
 
   // ─── Answer Selection ───────────────────────────────────────
   function handleAnswer(opt: string) {
@@ -140,9 +145,7 @@ export default function GamePageClient() {
     setSelectedAnswer(opt)
     setIsAnswered(true)
     if (opt === mockQuestion.correctAnswer) {
-      setScore((s) =>
-        s + Math.ceil((timeLeft / mockQuestion.timeLimit) * 1000)
-      )
+      setScore(s => s + Math.ceil((timeLeft / mockQuestion.timeLimit) * 1000))
     }
   }
 
@@ -153,86 +156,83 @@ export default function GamePageClient() {
       setMessage('')
     }
   }
-  return (
-      <div className="min-h-screen flex bg-gradient-to-b from-purple-50 to-purple-100">
-        {/* Quiz Panel */}
-        <div className="flex-1 p-4 flex flex-col">
-          <div className="mb-4 flex justify-between">
-            <span>
-              Question {questionNumber}/{totalQuestions}
-            </span>
-            <span>Score: {score}</span>
-          </div>
-          <div className="mb-4">
-            <Progress
-              value={(timeLeft / mockQuestion.timeLimit) * 100}
-              className="h-2"
-            />
-            <div className="text-right text-sm">{timeLeft}s</div>
-          </div>
-          <Card className="flex-1 p-6 mb-4 flex flex-col">
-            <h2 className="text-xl font-bold mb-8 text-center">
-              {mockQuestion.question}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
-              {mockQuestion.options.map((o, i) => (
-                <Button
-                  key={i}
-                  onClick={() => handleAnswer(o)}
-                  disabled={isAnswered}
-                  className={`h-20 text-lg ${
-                    !isAnswered
-                      ? ''
-                      : o === mockQuestion.correctAnswer
-                      ? 'bg-green-500 hover:bg-green-600'
-                      : o === selectedAnswer
-                      ? 'bg-red-500 hover:bg-red-600'
-                      : 'opacity-50'
-                  }`}
-                >
-                  {o}
-                </Button>
-              ))}
-            </div>
-          </Card>
-        </div>
 
-        {/* Chat & Players Panel */}
-        <div className="w-full max-w-sm h-screen border-l bg-white flex flex-col">
-          <div className="px-4 py-3 border-b flex justify-between items-center">
-            <h2 className="text-lg font-semibold">Chat</h2>
-            <span className="text-sm">
-              Host: {players.find((p) => p.id === hostId)?.name ?? '—'}
-            </span>
-          </div>
-          <div className="chat-scroll flex-1 overflow-y-auto px-4 py-2 space-y-4 text-sm">
-            {chat.map((m, i) => (
-              <div key={i}>
-                <div className="flex justify-between font-semibold">
-                  <span>{m.sender}</span>
-                  <span className="text-xs text-gray-400">{m.timestamp}</span>
-                </div>
-                <div className="ml-1 text-gray-700">{m.message}</div>
-              </div>
+  return (
+    <div className="min-h-screen flex bg-gradient-to-b from-purple-50 to-purple-100">
+      {/* Quiz Panel */}
+      <div className="flex-1 p-4 flex flex-col">
+        <div className="mb-4 flex justify-between">
+          <span>Question {questionNumber}/{totalQuestions}</span>
+          <span>Score: {score}</span>
+        </div>
+        <div className="mb-4">
+          <Progress
+            value={(timeLeft / mockQuestion.timeLimit) * 100}
+            className="h-2"
+          />
+          <div className="text-right text-sm">{timeLeft}s</div>
+        </div>
+        <Card className="flex-1 p-6 mb-4 flex flex-col">
+          <h2 className="text-xl font-bold mb-8 text-center">{mockQuestion.question}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
+            {mockQuestion.options.map((o, i) => (
+              <Button
+                key={i}
+                onClick={() => handleAnswer(o)}
+                disabled={isAnswered}
+                className={`h-20 text-lg ${
+                  !isAnswered
+                    ? ''
+                    : o === mockQuestion.correctAnswer
+                    ? 'bg-green-500 hover:bg-green-600'
+                    : o === selectedAnswer
+                    ? 'bg-red-500 hover:bg-red-600'
+                    : 'opacity-50'
+                }`}
+              >
+                {o}
+              </Button>
             ))}
           </div>
-          <div className="flex items-center gap-2 p-3 border-t">
-            <input
-              type="text"
-              className="flex-1 border rounded-full px-4 py-2 text-sm"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Type a message..."
-            />
-            <button
-              onClick={sendMessage}
-              className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
-            >
-              ➤
-            </button>
-          </div>
+        </Card>
+      </div>
+
+      {/* Chat & Players Panel */}
+      <div className="w-full max-w-sm h-screen border-l bg-white flex flex-col">
+        <div className="px-4 py-3 border-b flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Chat</h2>
+          <span className="text-sm">
+            Host: {players.find(p => p.id === hostId)?.name ?? '—'}
+          </span>
+        </div>
+        <div className="chat-scroll flex-1 overflow-y-auto px-4 py-2 space-y-4 text-sm">
+          {chat.map((m, i) => (
+            <div key={i}>
+              <div className="flex justify-between font-semibold">
+                <span>{m.sender}</span>
+                <span className="text-xs text-gray-400">{m.timestamp}</span>
+              </div>
+              <div className="ml-1 text-gray-700">{m.message}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 p-3 border-t">
+          <input
+            type="text"
+            className="flex-1 border rounded-full px-4 py-2 text-sm"
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && sendMessage()}
+            placeholder="Type a message..."
+          />
+          <button
+            onClick={sendMessage}
+            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
+          >
+            ➤
+          </button>
         </div>
       </div>
-  );
+    </div>
+  )
 }
