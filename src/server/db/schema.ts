@@ -118,3 +118,28 @@ export const scores = createTable(
   },
   (t) => [index("participant_id_index").on(t.participant_id)]
 );
+
+export type DB_User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+export type DB_Quiz = typeof quizzes.$inferSelect;
+export type NewQuiz = typeof quizzes.$inferInsert;
+
+export type DB_Question = typeof questions.$inferSelect;
+export type NewQuestion = typeof questions.$inferInsert;
+
+export type DB_Answer = typeof answers.$inferSelect;
+export type NewAnswer = typeof answers.$inferInsert;
+
+export type DB_Game = typeof games.$inferSelect;
+export type NewGame = typeof games.$inferInsert;
+
+export type DB_GameParticipant = typeof game_participants.$inferSelect;
+export type NewGameParticipant = typeof game_participants.$inferInsert;
+
+export type DB_Submission = typeof submissions.$inferSelect;
+export type NewSubmission = typeof submissions.$inferInsert;
+
+export type DB_Score = typeof scores.$inferSelect;
+export type NewScore = typeof scores.$inferInsert;
+
