@@ -8,21 +8,7 @@ import { ClerkProvider, UserButton, SignInButton, SignedIn, SignedOut } from "@c
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-50 to-purple-100">
-      <div className="absolute top-4 right-4">
-        <SignedIn>
-          <UserButton />
-        </SignedIn>
-        <SignedOut>
-          <SignInButton mode="modal">
-            <Button variant="outline">Sign in</Button>
-          </SignInButton>
-        </SignedOut>
-      </div>
       <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-purple-800 mb-2">Quiztris</h1>
-          <p className="text-gray-600 mb-8">Join a game or start a new one</p>
-        </div>
 
         <Card className="p-6 shadow-lg bg-white">
           <form action="/join" className="space-y-4">

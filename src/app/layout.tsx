@@ -7,9 +7,9 @@ import {
   SignedOut,
   UserButton,
 } from '@clerk/nextjs'
-
 import { type Metadata } from "next";
 import { Geist } from "next/font/google";
+import NavBar from "~/components/navbar";
 
 export const metadata: Metadata = {
   title: "Quiztris",
@@ -28,8 +28,9 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className={`${geist.variable}`}>
-        <body>
-          {children}
+        <body className="bg-zinc-950 text-white shadow-md">
+            <NavBar /> 
+            {children}
         </body>
       </html>
     </ClerkProvider>
