@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.19.2",
     "@radix-ui/react-label": "^2.1.2",
     "@radix-ui/react-progress": "^1.1.2",
     "@radix-ui/react-scroll-area": "^1.2.3",
