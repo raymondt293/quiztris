@@ -1,12 +1,17 @@
+"use client"
+
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Card } from "~/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
-import Link from "next/link"
+import { SignInButton, useAuth } from "@clerk/nextjs"
+import { redirect } from "next/navigation"
+import { useEffect } from "react"
 
 export default function JoinPage({ searchParams }: { searchParams: { code?: string; mode?: string } }) {
   const gameCode = searchParams.code ?? ""
   const gameMode = searchParams.mode ?? "normal"
+  const { userId } = useAuth()
 
   const getGameModeTitle = (mode: string) => {
     const modes: Record<string, string> = {
@@ -18,6 +23,13 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
     }
     return modes[mode] ?? "Game"
   }
+
+  // If user is signed in, redirect to game page
+  useEffect(() => {
+    if (userId) {
+      redirect(`/game?code=${gameCode}&mode=${gameMode}`)
+    }
+  }, [userId, gameCode, gameMode])
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-50 to-purple-100">
@@ -52,32 +64,13 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
             </TabsContent>
 
             <TabsContent value="account">
-              <form action="/game" className="space-y-4">
-                <input type="hidden" name="gameCode" value={gameCode} />
-                <input type="hidden" name="gameMode" value={gameMode} />
-
-                <div className="space-y-2">
-                  <Input name="email" type="email" placeholder="Email" required />
-                </div>
-
-                <div className="space-y-2">
-                  <Input name="password" type="password" placeholder="Password" required />
-                </div>
-
-                <Button type="submit" className="w-full bg-purple-600 hover:bg-purple-700">
-                  Sign In & Join
-                </Button>
-
-                <div className="text-center text-sm text-gray-500">
-                  <Link href="#" className="text-purple-600 hover:underline">
-                    Forgot password?
-                  </Link>
-                  {" | "}
-                  <Link href="#" className="text-purple-600 hover:underline">
-                    Create account
-                  </Link>
-                </div>
-              </form>
+              <div className="space-y-4">
+                <SignInButton mode="modal">
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                    Sign In with Clerk
+                  </Button>
+                </SignInButton>
+              </div>
             </TabsContent>
           </Tabs>
         </Card>
