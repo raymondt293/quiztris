@@ -37,6 +37,7 @@
     "**/*.cjs",
     "**/*.js",
     ".next/types/**/*.ts"
-, ".eslintrc.cjs"  ],
+, ".eslintrc.cjs",
+"websocket-server"   ],
   "exclude": ["node_modules"]
 }
