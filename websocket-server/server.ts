@@ -35,10 +35,11 @@ wss.on('connection', (ws: WebSocket) => {
         gameStarted: false,
         currentQuestion: 0,
       };
+      
       ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId }));
       broadcastToRoom(roomCode, {
         type: 'PLAYER_LIST',
-        players: rooms[roomCode].players,
+        players: rooms[roomCode]!.players,
         hostId: clientId,
       });
       return;
