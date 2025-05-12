@@ -51,6 +51,7 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
             <TabsContent value="guest">
               <form action="/waiting-room" className="space-y-4">
                 <input type="hidden" name="gameMode" value={gameMode} />
+                <input type="hidden" name="gameCode" value={gameCode} />
                 <div className="space-y-2">
                   <Input name="playerName" placeholder="Enter your name" required className="text-center text-lg" />
                 </div>
