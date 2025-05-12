@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useReducer } from "react"
+import { v4 as uuidv4 } from "uuid"
 import { Button } from "~/components/ui/button"
 import { Card } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
@@ -12,16 +13,16 @@ import { ChevronLeft, ChevronRight, Plus, Trash2, ImageIcon, Save, Eye, X, Setti
 import QuestionList from "~/components/admin/question-list"
 import QuestionPreview from "~/components/admin/question-preview"
 import { useRouter } from "next/navigation"
-import Image from "next/image";
+import Image from "next/image"
 
 // Types
-type Answer = {
+export type Answer = {
   id: string
   text: string
   isCorrect: boolean
 }
 
-type Question = {
+export type Question = {
   id: string
   text: string
   type: "multiple-choice" | "true-false" | "poll"
@@ -34,7 +35,7 @@ type Question = {
   }
 }
 
-type Quiz = {
+export type Quiz = {
   title: string
   description: string
   questions: Question[]
@@ -62,7 +63,7 @@ const initialQuiz: Quiz = {
 }
 
 // Reducer for quiz state management
-type QuizAction =
+export type QuizAction =
   | { type: "UPDATE_QUIZ_META"; payload: { field: keyof Quiz; value: string } }
   | { type: "ADD_QUESTION" }
   | { type: "REMOVE_QUESTION"; payload: { questionId: string } }
@@ -74,7 +75,7 @@ type QuizAction =
   | { type: "ADD_MEDIA"; payload: { questionId: string; media: Question["media"] } }
   | { type: "REMOVE_MEDIA"; payload: { questionId: string } }
 
-function quizReducer(state: Quiz, action: QuizAction): Quiz {
+export function quizReducer(state: Quiz, action: QuizAction): Quiz {
   switch (action.type) {
     case "UPDATE_QUIZ_META":
       return { ...state, [action.payload.field]: action.payload.value }
@@ -110,7 +111,9 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
       return {
         ...state,
         questions: state.questions.map((q) =>
-          q.id === action.payload.questionId ? { ...q, [action.payload.field]: action.payload.value } : q,
+          q.id === action.payload.questionId
+            ? { ...q, [action.payload.field]: action.payload.value }
+            : q,
         ),
       }
 
@@ -134,10 +137,7 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
         ...state,
         questions: state.questions.map((q) =>
           q.id === action.payload.questionId
-            ? {
-                ...q,
-                answers: [...q.answers, { id: `${q.id}a${q.answers.length + 1}`, text: "", isCorrect: false }],
-              }
+            ? { ...q, answers: [...q.answers, { id: `${q.id}a${q.answers.length + 1}`, text: "", isCorrect: false }] }
             : q,
         ),
       }
@@ -147,10 +147,7 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
         ...state,
         questions: state.questions.map((q) =>
           q.id === action.payload.questionId
-            ? {
-                ...q,
-                answers: q.answers.filter((a) => a.id !== action.payload.answerId),
-              }
+            ? { ...q, answers: q.answers.filter((a) => a.id !== action.payload.answerId) }
             : q,
         ),
       }
@@ -160,13 +157,7 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
         ...state,
         questions: state.questions.map((q) =>
           q.id === action.payload.questionId
-            ? {
-                ...q,
-                answers: q.answers.map((a) => ({
-                  ...a,
-                  isCorrect: a.id === action.payload.answerId,
-                })),
-              }
+            ? { ...q, answers: q.answers.map((a) => ({ ...a, isCorrect: a.id === action.payload.answerId })) }
             : q,
         ),
       }
@@ -175,12 +166,7 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
       return {
         ...state,
         questions: state.questions.map((q) =>
-          q.id === action.payload.questionId
-            ? {
-                ...q,
-                media: action.payload.media,
-              }
-            : q,
+          q.id === action.payload.questionId ? { ...q, media: action.payload.media } : q,
         ),
       }
 
@@ -188,12 +174,7 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
       return {
         ...state,
         questions: state.questions.map((q) =>
-          q.id === action.payload.questionId
-            ? {
-                ...q,
-                media: undefined,
-              }
-            : q,
+          q.id === action.payload.questionId ? { ...q, media: undefined } : q,
         ),
       }
 
@@ -202,25 +183,66 @@ function quizReducer(state: Quiz, action: QuizAction): Quiz {
   }
 }
 
+// --- Component ---
 export default function CreateQuizPage() {
   const router = useRouter()
   const [quiz, dispatch] = useReducer(quizReducer, initialQuiz)
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [showPreview, setShowPreview] = useState(false)
+  const [loadingGen, setLoadingGen] = useState(false)
 
   const currentQuestion = quiz.questions[currentQuestionIndex]
-
   if (!currentQuestion) return <div>No question selected.</div>
 
-  const handleSave = () => {
-    // In a real app, this would save to a database
-    console.log("Saving quiz:", quiz)
-    alert("Quiz saved successfully!")
+  // ==== GENERATE VIA GEMINI ====
+  const handleGenerateQuestion = async (questionId: string) => {
+    setLoadingGen(true)
+    try {
+      const res = await fetch("/api/generate-question", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: quiz.title }),
+      })
+      if (!res.ok) throw new Error(`API error ${res.status}`)
+
+      const data = (await res.json()) as {
+        question: string
+        options: string[]
+        answer: string
+      }
+      const { question: genText, options: genOpts, answer: genAns } = data
+
+      dispatch({
+        type: "UPDATE_QUESTION",
+        payload: { questionId, field: "text", value: genText },
+      })
+      dispatch({
+        type: "UPDATE_QUESTION",
+        payload: {
+          questionId,
+          field: "answers",
+          value: genOpts.map((opt) => ({
+            id: `${questionId}-${uuidv4()}`,
+            text: opt,
+            isCorrect: opt === genAns,
+          })),
+        } as any,
+      })
+    } catch (err: any) {
+      console.error(err)
+      alert("Failed to generate question: " + err.message)
+    } finally {
+      setLoadingGen(false)
+    }
   }
 
+  const handleSave = () => {
+    console.log('Saving quiz:', quiz)
+    alert('Quiz saved successfully!')
+  }
   const handleExit = () => {
-    if (confirm("Are you sure you want to exit? Any unsaved changes will be lost.")) {
-      router.push("/admin")
+    if (confirm('Are you sure you want to exit? Any unsaved changes will be lost.')) {
+      router.push('/admin')
     }
   }
 
@@ -247,8 +269,13 @@ export default function CreateQuizPage() {
         <div>
           <Input
             value={quiz.title}
-            onChange={(e) => dispatch({ type: "UPDATE_QUIZ_META", payload: { field: "title", value: e.target.value } })}
-            className="text-xl font-bold border-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto"
+            onChange={(e) =>
+              dispatch({
+                type: "UPDATE_QUIZ_META",
+                payload: { field: "title", value: e.target.value },
+              })
+            }
+            className="text-xl font-bold border-none focus-visible:ring-0 p-0 h-auto"
             placeholder="Untitled Quiz"
           />
         </div>
@@ -267,13 +294,15 @@ export default function CreateQuizPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex">
-        {/* Left Sidebar - Question List */}
+        {/* Sidebar */}
         <div className="w-64 bg-white border-r p-4 overflow-y-auto">
-          <div className="mb-4">
-            <Button variant="outline" className="w-full" onClick={() => dispatch({ type: "ADD_QUESTION" })}>
-              <Plus className="mr-2 h-4 w-4" /> Add Question
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            className="w-full mb-4"
+            onClick={() => dispatch({ type: "ADD_QUESTION" })}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add Question
+          </Button>
           <QuestionList
             questions={quiz.questions}
             currentIndex={currentQuestionIndex}
@@ -281,11 +310,9 @@ export default function CreateQuizPage() {
             onRemove={(id) => {
               if (quiz.questions.length > 1) {
                 dispatch({ type: "REMOVE_QUESTION", payload: { questionId: id } })
-                if (currentQuestionIndex >= quiz.questions.length - 1) {
-                  setCurrentQuestionIndex(currentQuestionIndex - 1)
-                }
+                setCurrentQuestionIndex((i) => Math.max(0, i - 1))
               } else {
-                alert("You must have at least one question.")
+                alert("At least one question is required.")
               }
             }}
           />
@@ -294,23 +321,34 @@ export default function CreateQuizPage() {
         {/* Center - Question Editor */}
         <div className="flex-1 p-6 overflow-y-auto">
           <Card className="p-6">
-            <div className="mb-6">
-              <Label htmlFor="question-text" className="text-lg font-medium mb-2 block">
-                Question
-              </Label>
+            <div className="flex items-center justify-between mb-4">
+                <Label className="text-lg font-medium mb-0 block">Question</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleGenerateQuestion(currentQuestion.id)}
+                  disabled={loadingGen}
+                >
+                  {loadingGen ? "Generating…" : "Generate via Gemini"}
+                </Button>
+              </div>
+
+              {/* Textarea on its own line */}
               <Textarea
-                id="question-text"
                 value={currentQuestion.text}
                 onChange={(e) =>
                   dispatch({
                     type: "UPDATE_QUESTION",
-                    payload: { questionId: currentQuestion.id, field: "text", value: e.target.value },
+                    payload: {
+                      questionId: currentQuestion.id,
+                      field: "text",
+                      value: e.target.value,
+                    },
                   })
                 }
-                placeholder="Enter your question here..."
-                className="min-h-[100px]"
+                placeholder="Enter your question..."
+                className="min-h-[100px] mb-6 w-full"
               />
-            </div>
 
             {/* Media Upload */}
             <div className="mb-6">
