@@ -196,45 +196,50 @@ export default function CreateQuizPage() {
 
   // ==== GENERATE VIA GEMINI ====
   const handleGenerateQuestion = async (questionId: string) => {
-    setLoadingGen(true)
-    try {
-      const res = await fetch("/api/generate-question", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: quiz.title }),
-      })
-      if (!res.ok) throw new Error(`API error ${res.status}`)
+  setLoadingGen(true)
+  try {
+    const res = await fetch("/api/generate-question", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: quiz.title }),
+    })
+    if (!res.ok) throw new Error(`API error ${res.status}`)
 
-      const data = (await res.json()) as {
-        question: string
-        options: string[]
-        answer: string
-      }
-      const { question: genText, options: genOpts, answer: genAns } = data
-
-      dispatch({
-        type: "UPDATE_QUESTION",
-        payload: { questionId, field: "text", value: genText },
-      })
-      dispatch({
-        type: "UPDATE_QUESTION",
-        payload: {
-          questionId,
-          field: "answers",
-          value: genOpts.map((opt) => ({
-            id: `${questionId}-${uuidv4()}`,
-            text: opt,
-            isCorrect: opt === genAns,
-          })),
-        } as any,
-      })
-    } catch (err: any) {
-      console.error(err)
-      alert("Failed to generate question: " + err.message)
-    } finally {
-      setLoadingGen(false)
+    const data = (await res.json()) as {
+      question: string
+      options: string[]
+      answer: string
     }
+    const { question: genText, options: genOpts, answer: genAns } = data
+
+    // update text
+    dispatch({
+      type: "UPDATE_QUESTION",
+      payload: { questionId, field: "text", value: genText },
+    })
+
+    // update answers (no more `as any`)
+    dispatch({
+      type: "UPDATE_QUESTION",
+      payload: {
+        questionId,
+        field: "answers",
+        value: genOpts.map((opt) => ({
+          id: `${questionId}-${uuidv4()}`,
+          text: opt,
+          isCorrect: opt === genAns,
+        })),
+      },
+    })
+  } catch (err: unknown) {
+    // narrow the unknown so we can safely access .message
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    console.error("Failed to generate question:", errorMessage)
+    alert("Failed to generate question: " + errorMessage)
+  } finally {
+    setLoadingGen(false)
   }
+}
 
   const handleSave = () => {
     console.log('Saving quiz:', quiz)

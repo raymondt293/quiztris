@@ -11,7 +11,6 @@ if (!API_KEY) {
 // Initialize the GenAI client
 const ai = new GoogleGenAI({ apiKey: API_KEY! })
 
-type ErrorResponse = { error: string }
 type QuizQuestion = { question: string; options: string[]; answer: string }
 type QuizResponse = { questions: QuizQuestion[] }
 
@@ -40,25 +39,37 @@ export async function POST(req: Request): Promise<Response> {
     console.log('[generate-question] raw text:', raw)
 
     // Extract JSON substring if extra text is present
-    const match = raw.match(/\{[\s\S]*\}/)
+    const match = /\{[\s\S]*\}/.exec(raw)
     const jsonString = match ? match[0] : raw
 
     // Parse JSON
     let parsed: QuizResponse
     try {
       parsed = JSON.parse(jsonString) as QuizResponse
-    } catch (parseErr: any) {
-      console.error('[generate-question] JSON.parse error:', parseErr)
-      return NextResponse.json(
-        { error: `Invalid JSON from AI: ${raw}` },
-        { status: 500 }
-      )
+    } catch (parseErr: unknown) {
+      if (parseErr instanceof Error) {
+        console.error('JSON parse failed:', parseErr.message);
+      } else {
+        console.error('JSON parse failed with unknown error:', parseErr);
+      }
+      return NextResponse.error();
     }
 
     return NextResponse.json(parsed)
-  } catch (err: any) {
-    console.error('[generate-question] error:', err)
-    const body: ErrorResponse = { error: err.message || String(err) }
-    return NextResponse.json(body, { status: 500 })
+    } catch (err: unknown) {
+    // 1. narrow to get a string
+    const errorMessage = err instanceof Error ? err.message : String(err);
+
+    // 2. log it
+    console.error(
+      '[generate-question] error generating question:',
+      errorMessage
+    );
+
+    // 3. respond, using nullish-coalescing to guard just in case
+    return NextResponse.json(
+      { error: errorMessage ?? 'Something went wrong' },
+      { status: 500 }
+    );
   }
 }

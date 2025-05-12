@@ -71,6 +71,7 @@ export default function GamePageClient() {
     })
 
     socket.addEventListener('message', (evt) => {
+      if (typeof evt.data !== 'string') return
       const data = JSON.parse(evt.data) as ServerMessage
       switch (data.type) {
         case 'PLAYER_LIST':
@@ -130,7 +131,7 @@ export default function GamePageClient() {
   // ─── Fetch Questions on Start ───────────────────────────────▀
   useEffect(() => {
     if (!gameStarted || questionsLoaded) return
-    ;(async () => {
+    void (async () => {
       try {
         const res = await fetch('/api/generate-question', {
           method: 'POST',
