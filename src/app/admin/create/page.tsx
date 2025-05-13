@@ -271,7 +271,7 @@ export default function CreateQuizPage() {
       alert("Quiz saved successfully!")
       
       // 3) pull the new quizId out of the JSON
-      const { quizId } = (await res.json()) as { quizId: number }
+      await res.json()
   
       // 4) navigate to the admin game page
       router.push("/admin")
