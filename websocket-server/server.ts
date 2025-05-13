@@ -1,4 +1,3 @@
-// server.ts
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -12,8 +11,6 @@ interface Room {
   startTimestamp?: number;
   currentQuestion: number;
   questions?:      QuizQuestion[];
-
-  // per‐player stats
   scores:    Record<string, number>;
   correct:   Record<string, number>;
   incorrect: Record<string, number>;
@@ -35,17 +32,19 @@ interface PlayerResult {
 }
 
 const TOTAL_QUESTIONS = 10;
-const NEXT_API_URL    = process.env.NEXT_API_URL || 'http://localhost:3000';
 
-const wss = new WebSocketServer({ port: 3001 });
+// In production (Netlify), set NEXT_API_URL to e.g. "https://<your-site>.netlify.app"
+const NEXT_API_URL = process.env.NEXT_API_URL?.replace(/\/$/, '') ?? '';
+
+// WS port can be overridden via env WS_PORT
+const WS_PORT = Number(process.env.WS_PORT) || 3001;
+
+const wss = new WebSocketServer({ port: WS_PORT });
 const rooms: Record<string, Room> = {};
 const clientNames: Record<string, string> = {};
 
-// ─── Helpers ──────────────────────────────────────────────────────
 function uniquePlayers(list: Player[]): Player[] {
-  return Array.from(
-    new Map(list.map(p => [p.id, p])).values()
-  );
+  return Array.from(new Map(list.map(p => [p.id, p])).values());
 }
 
 wss.on('connection', (ws) => {
@@ -162,8 +161,10 @@ wss.on('connection', (ws) => {
       if (!room || room.host !== clientId) return;
 
       try {
+        // Use NEXT_API_URL in prod or localhost in dev
+        const apiBase = NEXT_API_URL || `http://localhost:${process.env.PORT || 3000}`;
         const res = await fetch(
-          `${NEXT_API_URL}/api/generate-question`,
+          `${apiBase}/api/generate-question`,
           {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -338,4 +339,4 @@ function broadcastToRoom(roomCode: string, msg: any) {
   }
 }
 
-console.log(`✅ WebSocket server listening on ws://localhost:3001, Next API at ${NEXT_API_URL}`);
+console.log(`✅ WS server listening on ws://localhost:${WS_PORT}, Next API at ${NEXT_API_URL || 'relative /api'}`);

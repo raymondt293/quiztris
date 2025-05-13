@@ -1,20 +1,20 @@
-'use client'
+'use client';
 
-import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Button } from '~/components/ui/button'
-import { Card } from '~/components/ui/card'
-import { Progress } from '~/components/ui/progress'
+import { useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Button } from '~/components/ui/button';
+import { Card } from '~/components/ui/card';
+import { Progress } from '~/components/ui/progress';
 
-type QuizQuestion = { question: string; options: string[]; answer: string }
-type Player       = { id: string; name: string }
-type ChatMessage  = { sender: string; message: string; timestamp: string }
+type QuizQuestion = { question: string; options: string[]; answer: string };
+type Player       = { id: string; name: string };
+type ChatMessage  = { sender: string; message: string; timestamp: string };
 interface PlayerResult {
-  id: string
-  name: string
-  score: number
-  correct: number
-  incorrect: number
+  id: string;
+  name: string;
+  score: number;
+  correct: number;
+  incorrect: number;
 }
 type ServerMessage =
   | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
@@ -22,49 +22,57 @@ type ServerMessage =
   | { type: 'ERROR'; message: string }
   | { type: 'GAME_START'; startTimestamp: number; questionIndex: number; questions: QuizQuestion[] }
   | { type: 'NEXT_QUESTION'; questionIndex: number }
-  | { type: 'GAME_OVER';      results: PlayerResult[] }
+  | { type: 'GAME_OVER'; results: PlayerResult[] }
   | { type: 'ROOM_CLOSED' }
-  | { type: 'KICKED' }
+  | { type: 'KICKED' };
 
-const DEFAULT_TIME_LIMIT = 20
-const TOTAL_QUESTIONS    = 10
+const DEFAULT_TIME_LIMIT = 20;
+const TOTAL_QUESTIONS    = 10;
 
 export default function GamePageClient() {
-  const router     = useRouter()
-  const params     = useSearchParams()
-  const roomCode   = params.get('code') ?? ''
-  const playerName = params.get('name') ?? ''
-  const isHostFlag = params.get('isHost') === 'true'
+  const router     = useRouter();
+  const params     = useSearchParams();
+  const roomCode   = params.get('code') ?? '';
+  const playerName = params.get('name') ?? '';
+  const isHostFlag = params.get('isHost') === 'true';
+
+  // Build dynamic WS URL at runtime with nullish coalescing
+  const getWsUrl = () => {
+    if (typeof window === 'undefined') return '';
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const host  = process.env.NEXT_PUBLIC_WS_HOST ?? window.location.hostname;
+    const port  = process.env.NEXT_PUBLIC_WS_PORT ?? '3001';
+    return `${proto}://${host}:${port}`;
+  };
 
   // ─── Room State ───────────────────────────────────────────
-  const [players, setPlayers] = useState<Player[]>([])
-  const [hostId, setHostId]   = useState<string>('')
-
-  const youId = players.find((p) => p.name === playerName)?.id ?? ''
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [hostId, setHostId]   = useState<string>('');
+  const youId = players.find((p) => p.name === playerName)?.id ?? '';
 
   // ─── Chat State ───────────────────────────────────────────
-  const [chat, setChat]       = useState<ChatMessage[]>([])
-  const [message, setMessage] = useState('')
-  const wsRef                 = useRef<WebSocket | null>(null)
+  const [chat, setChat]       = useState<ChatMessage[]>([]);
+  const [message, setMessage] = useState('');
+  const wsRef                 = useRef<WebSocket | null>(null);
 
   // ─── Quiz State ───────────────────────────────────────────
-  const [questions, setQuestions]           = useState<QuizQuestion[]>([])
-  const [gameStarted, setGameStarted]       = useState(false)
-  const [questionNumber, setQuestionNumber] = useState(0)
-  const [timeLeft, setTimeLeft]             = useState(0)
-  const [isAnswered, setIsAnswered]         = useState(false)
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
-  const [score, setScore]                   = useState(0)
-  const startRef                            = useRef<number>(0)
+  const [questions, setQuestions]           = useState<QuizQuestion[]>([]);
+  const [gameStarted, setGameStarted]       = useState(false);
+  const [questionNumber, setQuestionNumber] = useState(0);
+  const [timeLeft, setTimeLeft]             = useState(0);
+  const [isAnswered, setIsAnswered]         = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [score, setScore]                   = useState(0);
+  const startRef                            = useRef<number>(0);
 
   // ─── Connect & Handle Messages ────────────────────────────
   useEffect(() => {
     if (!roomCode || !playerName) {
-      router.push('/')
-      return
+      router.push('/');
+      return;
     }
-    const socket = new WebSocket('ws://localhost:3001')
-    wsRef.current = socket
+    const socket = new WebSocket(getWsUrl());
+    wsRef.current = socket;
 
     socket.addEventListener('open', () => {
       socket.send(JSON.stringify({
@@ -72,151 +80,141 @@ export default function GamePageClient() {
         roomCode,
         name: playerName,
         isHost: isHostFlag,
-      }))
-    })
+      }));
+    });
 
     socket.addEventListener('message', (evt) => {
-      if (typeof evt.data !== 'string') return
-      const data = JSON.parse(evt.data) as ServerMessage
+      if (typeof evt.data !== 'string') return;
+      const data = JSON.parse(evt.data) as ServerMessage;
 
       switch (data.type) {
         case 'PLAYER_LIST': {
-          // de-dupe by name (so re-joins don’t show twice)
           const unique = data.players.filter(
-            (p, idx, arr) => arr.findIndex(x => x.id === p.id) === idx
+            (p, i, arr) => arr.findIndex(x => x.id === p.id) === i
           );
-          setPlayers(unique)
-          setHostId(data.hostId)
-          break
+          setPlayers(unique);
+          setHostId(data.hostId);
+          break;
         }
 
         case 'CHAT_MESSAGE': {
           const ts = new Date().toLocaleTimeString([], {
             hour: '2-digit', minute: '2-digit'
-          })
+          });
           setChat(c => [
             ...c,
             { sender: data.sender ?? 'System', message: data.message, timestamp: ts }
-          ])
-          break
+          ]);
+          break;
         }
 
         case 'ERROR':
-          alert(data.message)
-          socket.close()
-          router.push('/')
-          break
+          alert(data.message);
+          socket.close();
+          router.push('/');
+          break;
 
         case 'GAME_START': {
-          setQuestions(data.questions)
-          const elapsed   = Math.floor((Date.now() - data.startTimestamp) / 1000)
-          const remaining = DEFAULT_TIME_LIMIT - elapsed
-          startRef.current     = data.startTimestamp
-          setQuestionNumber(data.questionIndex)
-          setTimeLeft(Math.max(remaining, 0))
-          setIsAnswered(false)
-          setSelectedAnswer(null)
-          setGameStarted(true)
-          break
+          setQuestions(data.questions);
+          const elapsed   = Math.floor((Date.now() - data.startTimestamp) / 1000);
+          const remaining = DEFAULT_TIME_LIMIT - elapsed;
+          startRef.current     = data.startTimestamp;
+          setQuestionNumber(data.questionIndex);
+          setTimeLeft(Math.max(remaining, 0));
+          setIsAnswered(false);
+          setSelectedAnswer(null);
+          setGameStarted(true);
+          break;
         }
 
         case 'NEXT_QUESTION':
-          setQuestionNumber(data.questionIndex)
-          setTimeLeft(DEFAULT_TIME_LIMIT)
-          setIsAnswered(false)
-          setSelectedAnswer(null)
-          break
+          setQuestionNumber(data.questionIndex);
+          setTimeLeft(DEFAULT_TIME_LIMIT);
+          setIsAnswered(false);
+          setSelectedAnswer(null);
+          break;
 
         case 'GAME_OVER': {
-          // Remove any accidental duplicates by player ID
           const uniqueResults = data.results.filter(
             (p, i, arr) => arr.findIndex(x => x.id === p.id) === i
-        )
-
-          // Navigate with only the unique results
-          const qs = new URLSearchParams()
-          qs.set('players', JSON.stringify(uniqueResults))
-          qs.set('youId', youId)
-          router.push(`/game-over?${qs.toString()}`)
-          break
+          );
+          const qs = new URLSearchParams();
+          qs.set('players', JSON.stringify(uniqueResults));
+          qs.set('youId', youId);
+          router.push(`/game-over?${qs.toString()}`);
+          break;
         }
 
         case 'ROOM_CLOSED':
-          alert('Host has left. Room closed.')
-          socket.close()
-          router.push('/')
-          break
+          alert('Host has left. Room closed.');
+          socket.close();
+          router.push('/');
+          break;
 
         case 'KICKED':
-          alert('You were kicked from the room.')
-          socket.close()
-          router.push('/')
-          break
+          alert('You were kicked from the room.');
+          socket.close();
+          router.push('/');
+          break;
       }
-    })
+    });
 
-    return () => socket.close()
-  }, [roomCode, playerName, isHostFlag, router]) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => socket.close();
+  }, [roomCode, playerName, isHostFlag, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Countdown & Auto-Advance ─────────────────────────────
   useEffect(() => {
-    if (!gameStarted) return
+    if (!gameStarted) return;
 
     if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(t => t - 1), 1000)
-      return () => clearTimeout(timer)
+      const timer = setTimeout(() => setTimeLeft(t => t - 1), 1000);
+      return () => clearTimeout(timer);
     }
 
-    // On timeout, always ask the server to advance (or end) the game
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      setIsAnswered(true)
+      setIsAnswered(true);
       wsRef.current.send(JSON.stringify({
         type:     'NEXT_QUESTION',
         roomCode,
-      }))
+      }));
     }
-  }, [gameStarted, timeLeft, roomCode])
+  }, [gameStarted, timeLeft, roomCode]);
 
-  // ─── Answer Selection ───────────────────────────────────────
+  // ─── Answer Selection ─────────────────────────────────────
   const currentQuestion =
-    questions[questionNumber - 1] ?? { question: 'Loading...', options: [], answer: '' }
+    questions[questionNumber - 1] ?? { question: 'Loading...', options: [], answer: '' };
 
   function handleAnswer(opt: string) {
-    if (!gameStarted || isAnswered) return
-    setSelectedAnswer(opt)
-    setIsAnswered(true)
+    if (!gameStarted || isAnswered) return;
+    setSelectedAnswer(opt);
+    setIsAnswered(true);
 
-    const isRight = opt === currentQuestion.answer
-    // how many points you just earned
+    const isRight = opt === currentQuestion.answer;
     const earned = isRight
       ? Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000)
-      : 0
+      : 0;
 
-    // update your local totals
-    if (earned > 0) {
-      setScore(s => s + earned)
-    }
+    if (earned > 0) setScore(s => s + earned);
 
-    // Tell the server who answered and whether it was correct
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type:     'ANSWER',
         roomCode,
         playerId: youId,
         points:   earned,
-      }))
+      }));
     }
   }
 
-  // ─── Chat Sending ───────────────────────────────────────────
+  // ─── Chat Sending ─────────────────────────────────────────
   function sendMessage() {
     if (message.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type:    'CHAT_MESSAGE',
         roomCode,
         message,
-      }))
-      setMessage('')
+      }));
+      setMessage('');
     }
   }
 
@@ -246,10 +244,10 @@ export default function GamePageClient() {
                   !isAnswered
                     ? ''
                     : o === currentQuestion.answer
-                    ? 'bg-green-500 hover:bg-green-600'
-                    : o === selectedAnswer
-                    ? 'bg-red-500 hover:bg-red-600'
-                    : 'opacity-50'
+                      ? 'bg-green-500 hover:bg-green-600'
+                      : o === selectedAnswer
+                        ? 'bg-red-500 hover:bg-red-600'
+                        : 'opacity-50'
                 }`}
               >
                 {o}
@@ -296,5 +294,5 @@ export default function GamePageClient() {
         </div>
       </div>
     </div>
-  )
+  );
 }
