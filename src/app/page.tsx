@@ -3,7 +3,6 @@ import { Input } from "~/components/ui/input"
 import { Card } from "~/components/ui/card"
 import GameModes from "~/components/game-modes"
 import { ArrowRight } from "lucide-react"
-import { ClerkProvider, UserButton, SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 
 export default function Home() {
   return (

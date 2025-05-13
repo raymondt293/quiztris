@@ -12,7 +12,7 @@ export function useToast() {
   const [toasts, setToasts] = useState<ToastProps[]>([])
 
   const toast = (props: ToastProps) => {
-    const id = Date.now()
+    //const id = Date.now()
     setToasts((prevToasts) => [...prevToasts, props])
 
     // In a real implementation, this would display a toast notification

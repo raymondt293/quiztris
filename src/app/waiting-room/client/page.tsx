@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { Button } from "~/components/ui/button";
@@ -62,6 +62,7 @@ export default function WaitingRoomPage() {
     };
 
     socket.onmessage = (evt) => {
+      if (typeof evt.data !== "string") return;
       const data = JSON.parse(evt.data) as ServerMessage;
 
       switch (data.type) {
@@ -70,7 +71,10 @@ export default function WaitingRoomPage() {
           roomRef.current = data.roomCode;
           setPlayerId(data.playerId);
           setHostId(data.playerId);
-          router.replace(`/waiting-room/client?code=${data.roomCode}&mode=create&name=${encodeURIComponent(nameParam)}`);
+          router.replace(
+            `/waiting-room/client?code=${data.roomCode}` +
+              `&mode=create&name=${encodeURIComponent(nameParam)}`
+          );
           break;
         case "ROOM_JOINED":
           setRoomCode(data.roomCode);
@@ -86,7 +90,7 @@ export default function WaitingRoomPage() {
           setChat((prev) => [...prev, { sender: data.sender ?? "System", message: data.message, timestamp: ts }]);
           break;
         case "GAME_START":
-          socket.send(JSON.stringify({ type: "GO_TO_GAME", roomCode: roomRef.current }));
+          socket.send (JSON.stringify({ type: "GO_TO_GAME", roomCode: roomRef.current }));
           socket.close();
           const isHostFlag = playerIdRef.current === hostIdRef.current;
           router.push(`/game?code=${roomRef.current}&name=${encodeURIComponent(nameParam)}&isHost=${isHostFlag}`);
@@ -117,7 +121,7 @@ export default function WaitingRoomPage() {
   }, [nameParam, connectWebSocket]);
 
   const copyGameCode = () => {
-    navigator.clipboard.writeText(roomCode || codeParam);
+    void navigator.clipboard.writeText(roomCode || codeParam);
     setIsCopied(true);
     toast({ title: "Game code copied!", description: "Share this code with your friends." });
     setTimeout(() => setIsCopied(false), 2000);
