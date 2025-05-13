@@ -57,10 +57,6 @@ export default function GamePageClient() {
   const [score, setScore]                   = useState(0)
   const startRef                            = useRef<number>(0)
 
-  // ─── Score Tracking ───────────────────────────────────────
-  const [correctCounts, setCorrectCounts]     = useState<Record<string, number>>({})
-  const [incorrectCounts, setIncorrectCounts] = useState<Record<string, number>>({})
-
   // ─── Connect & Handle Messages ────────────────────────────
   useEffect(() => {
     if (!roomCode || !playerName) {
@@ -87,8 +83,8 @@ export default function GamePageClient() {
         case 'PLAYER_LIST': {
           // de-dupe by name (so re-joins don’t show twice)
           const unique = data.players.filter(
-            (p, idx, arr) => arr.findIndex(x => x.name === p.name) === idx
-          )
+            (p, idx, arr) => arr.findIndex(x => x.id === p.id) === idx
+          );
           setPlayers(unique)
           setHostId(data.hostId)
           break
@@ -160,7 +156,7 @@ export default function GamePageClient() {
     })
 
     return () => socket.close()
-  }, [roomCode, playerName, isHostFlag, router])
+  }, [roomCode, playerName, isHostFlag, router]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Countdown & Auto-Advance ─────────────────────────────
   useEffect(() => {
@@ -199,9 +195,6 @@ export default function GamePageClient() {
     // update your local totals
     if (earned > 0) {
       setScore(s => s + earned)
-      setCorrectCounts(cc => ({ ...cc, [youId]: (cc[youId] || 0) + 1 }))
-    } else {
-      setIncorrectCounts(ic => ({ ...ic, [youId]: (ic[youId] || 0) + 1 }))
     }
 
     // Tell the server who answered and whether it was correct

@@ -21,7 +21,7 @@ export default function GameOverPage() {
 
   let players: PlayerResult[]
   try {
-    players = JSON.parse(rawPlayers)
+    players = JSON.parse(rawPlayers) as PlayerResult[];
   } catch {
     players = []
   }
