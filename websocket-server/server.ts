@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Player { id: string; name: string }
+interface QuizQuestion { question: string; options: string[]; answer: string }
 interface Room {
   host: string;
   players: Player[];
@@ -9,17 +10,20 @@ interface Room {
   gameStarted: boolean;
   startTimestamp?: number;
   currentQuestion: number;
+  questions?: QuizQuestion[];
+  scores: Record<string, number>;    // ← add this
 }
 
+const TOTAL_QUESTIONS = 10;
 const wss = new WebSocketServer({ port: 3001 });
 const rooms: Record<string, Room> = {};
 const clientNames: Record<string, string> = {};
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws) => {
   const clientId = uuidv4();
   (ws as any).id = clientId;
 
-  ws.on('message', (raw: string) => {
+  ws.on('message', async (raw: string) => {
     let data: any;
     try { data = JSON.parse(raw); } catch { return; }
 
@@ -34,6 +38,7 @@ wss.on('connection', (ws: WebSocket) => {
         sockets: { [clientId]: ws },
         gameStarted: false,
         currentQuestion: 0,
+        scores: {},
       };
       ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId }));
       broadcastToRoom(roomCode, {
@@ -44,51 +49,39 @@ wss.on('connection', (ws: WebSocket) => {
       return;
     }
 
+    
+
     // ─── JOIN ROOM ─────────────────────────────────────────────
-    if (data.type === "JOIN_ROOM") {
+    if (data.type === 'JOIN_ROOM') {
       const room = rooms[data.roomCode];
       if (!room) {
-        ws.send(JSON.stringify({ type: "ERROR", message: "Room not found" }));
+        ws.send(JSON.stringify({ type: 'ERROR', message: 'Room not found' }));
         return;
       }
-
-      // ── If we're already mid‐game and this name matches the original host,
-      //     promote this connection to be the new host.
       if (room.gameStarted && data.isHost === true) {
         room.host = clientId;
       }
-
       clientNames[clientId] = data.name;
       room.players.push({ id: clientId, name: data.name });
       room.sockets[clientId] = ws;
 
-      // Acknowledge join
-      ws.send(JSON.stringify({
-        type: "ROOM_JOINED",
-        roomCode: data.roomCode,
-        playerId: clientId,
-      }));
-
-      // Broadcast updated player list
+      ws.send(JSON.stringify({ type: 'ROOM_JOINED', roomCode: data.roomCode, playerId: clientId }));
       broadcastToRoom(data.roomCode, {
-        type: "PLAYER_LIST",
+        type: 'PLAYER_LIST',
         players: room.players,
         hostId: room.host,
       });
-
-      // Always announce a join
       broadcastToRoom(data.roomCode, {
-        type: "CHAT_MESSAGE",
-        sender: "System",
+        type: 'CHAT_MESSAGE',
+        sender: 'System',
         message: `${data.name} joined the room.`,
       });
-
-      // If the game’s underway, sync them to the current question
       if (room.gameStarted && room.startTimestamp) {
         ws.send(JSON.stringify({
-          type: "GAME_START",
+          type: 'GAME_START',
           startTimestamp: room.startTimestamp,
           questionIndex: room.currentQuestion,
+          questions: room.questions
         }));
       }
       return;
@@ -118,6 +111,21 @@ wss.on('connection', (ws: WebSocket) => {
     if (data.type === 'START_GAME') {
       const room = rooms[data.roomCode];
       if (!room || room.host !== clientId) return;
+
+      // fetch questions once
+      try {
+        const res = await fetch('http://localhost:3000/api/generate-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
+        });
+        const body = (await res.json()) as { questions: QuizQuestion[] };
+        room.questions = body.questions;
+      } catch (err) {
+        console.error('Failed to load questions:', err);
+        return;
+      }
+
       room.gameStarted = true;
       room.currentQuestion = 1;
       room.startTimestamp = Date.now();
@@ -125,6 +133,7 @@ wss.on('connection', (ws: WebSocket) => {
         type: 'GAME_START',
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
+        questions: room.questions,
       });
       return;
     }
@@ -132,14 +141,17 @@ wss.on('connection', (ws: WebSocket) => {
     // ─── NEXT QUESTION ─────────────────────────────────────────
     if (data.type === 'NEXT_QUESTION') {
       const room = rooms[data.roomCode];
-      if (!room || !room.gameStarted || room.host !== clientId) return;
+      if (!room || !room.gameStarted) return;
       room.currentQuestion++;
-      room.startTimestamp = Date.now();
-      broadcastToRoom(data.roomCode, {
-        type: 'GAME_START',
-        startTimestamp: room.startTimestamp,
-        questionIndex: room.currentQuestion,
-      });
+      if (room.currentQuestion > TOTAL_QUESTIONS) {
+        broadcastToRoom(data.roomCode, { type: 'GAME_OVER' });
+      } else {
+        room.startTimestamp = Date.now();
+        broadcastToRoom(data.roomCode, {
+          type: 'NEXT_QUESTION',
+          questionIndex: room.currentQuestion,
+        });
+      }
       return;
     }
 
@@ -179,11 +191,9 @@ wss.on('connection', (ws: WebSocket) => {
           delete clientNames[clientId];
 
           if (room.host === clientId) {
-            // host left: broadcast and delete room
             broadcastToRoom(code, { type: 'ROOM_CLOSED' });
             delete rooms[code];
           } else {
-            // just a normal player
             broadcastToRoom(code, {
               type: 'PLAYER_LIST',
               players: room.players,
@@ -202,7 +212,7 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
-    // handle abrupt disconnects the same as LEAVE_ROOM
+    // handle abrupt disconnects same as LEAVE_ROOM
     if (!clientNames[clientId]) return;
     for (const [code, room] of Object.entries(rooms)) {
       if (room.sockets[clientId]) {

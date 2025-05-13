@@ -6,51 +6,63 @@ import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Progress } from '~/components/ui/progress'
 
-// ─── Types ───────────────────────────────────────────────────────
 type QuizQuestion = { question: string; options: string[]; answer: string }
-type Player = { id: string; name: string }
-type ChatMessage = { sender: string; message: string; timestamp: string }
+type Player       = { id: string; name: string }
+type ChatMessage  = { sender: string; message: string; timestamp: string }
 type ServerMessage =
   | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
   | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
   | { type: 'ERROR'; message: string }
-  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number }
+  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number; questions: QuizQuestion[] }
   | { type: 'NEXT_QUESTION'; questionIndex: number }
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
 
-// ─── Defaults ────────────────────────────────────────────────────
+interface PlayerResult {
+  id: string
+  name: string
+  score: number
+  correct: number
+  incorrect: number
+}
+
 const DEFAULT_TIME_LIMIT = 20
-const TOTAL_QUESTIONS = 10
+const TOTAL_QUESTIONS    = 10
 
 export default function GamePageClient() {
-  const router = useRouter()
-  const params = useSearchParams()
-  const roomCode = params.get('code') ?? ''
+  const router     = useRouter()
+  const params     = useSearchParams()
+  const roomCode   = params.get('code') ?? ''
   const playerName = params.get('name') ?? ''
   const isHostFlag = params.get('isHost') === 'true'
 
-  // ─── Room & Host ───────────────────────────────────────────
+  // ─── Room State ───────────────────────────────────────────
   const [players, setPlayers] = useState<Player[]>([])
-  const [hostId, setHostId] = useState<string>('')
+  const [hostId, setHostId]   = useState<string>('')
 
-  // ─── Chat ───────────────────────────────────────────────────
-  const [chat, setChat] = useState<ChatMessage[]>([])
+  // Once we have the players list, grab your own ID
+  const youId = players.find((p) => p.name === playerName)?.id ?? ''
+
+  // ─── Chat State ───────────────────────────────────────────
+  const [chat, setChat]       = useState<ChatMessage[]>([])
   const [message, setMessage] = useState('')
-  const wsRef = useRef<WebSocket | null>(null)
+  const wsRef                 = useRef<WebSocket | null>(null)
 
-  // ─── Quiz State ──────────────────────────────────────────────
-  const [questions, setQuestions] = useState<QuizQuestion[]>([])
-  const [questionsLoaded, setQuestionsLoaded] = useState(false)
-  const [gameStarted, setGameStarted] = useState(false)
+  // ─── Quiz State ───────────────────────────────────────────
+  const [questions, setQuestions]       = useState<QuizQuestion[]>([])
+  const [gameStarted, setGameStarted]   = useState(false)
   const [questionNumber, setQuestionNumber] = useState(0)
-  const [timeLeft, setTimeLeft] = useState(0)
-  const [isAnswered, setIsAnswered] = useState(false)
+  const [timeLeft, setTimeLeft]         = useState(0)
+  const [isAnswered, setIsAnswered]     = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
-  const [score, setScore] = useState(0)
-  const startRef = useRef<number>(0)
+  const [score, setScore]               = useState(0)
+  const startRef                        = useRef<number>(0)
 
-  // ─── Connect & Handle Server Messages ───────────────────────
+  // ─── Score Tracking ─────────────────────────────────────────
+  const [correctCounts, setCorrectCounts]     = useState<Record<string, number>>({});
+  const [incorrectCounts, setIncorrectCounts] = useState<Record<string, number>>({});
+
+  // ─── Connect & Handle Messages ────────────────────────────
   useEffect(() => {
     if (!roomCode || !playerName) {
       router.push('/')
@@ -60,40 +72,50 @@ export default function GamePageClient() {
     wsRef.current = socket
 
     socket.addEventListener('open', () => {
-      socket.send(
-        JSON.stringify({
-          type: 'JOIN_ROOM',
-          roomCode,
-          name: playerName,
-          isHost: isHostFlag,
-        })
-      )
+      socket.send(JSON.stringify({
+        type: 'JOIN_ROOM',
+        roomCode,
+        name: playerName,
+        isHost: isHostFlag,
+      }))
     })
 
     socket.addEventListener('message', (evt) => {
       if (typeof evt.data !== 'string') return
       const data = JSON.parse(evt.data) as ServerMessage
+
       switch (data.type) {
-        case 'PLAYER_LIST':
-          setPlayers(data.players)
+        // ─── De-dupe the PLAYER_LIST ───────────────────────────
+        case 'PLAYER_LIST': {
+          // filter out any duplicate IDs
+          const unique = data.players.filter(
+            (p, idx, arr) => arr.findIndex(x => x.id === p.id) === idx
+          )
+          setPlayers(unique)
           setHostId(data.hostId)
           break
+        }
+
         case 'CHAT_MESSAGE': {
-          const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          setChat((c) => [
+          const ts = new Date().toLocaleTimeString([], {
+            hour: '2-digit', minute: '2-digit'
+          })
+          setChat(c => [
             ...c,
-            { sender: data.sender ?? 'System', message: data.message, timestamp: ts },
+            { sender: data.sender ?? 'System', message: data.message, timestamp: ts }
           ])
           break
         }
+
         case 'ERROR':
           alert(data.message)
           socket.close()
           router.push('/')
           break
+
         case 'GAME_START': {
-          // Sync start timestamp and question index
-          const elapsed = Math.floor((Date.now() - data.startTimestamp) / 1000)
+          setQuestions(data.questions)
+          const elapsed   = Math.floor((Date.now() - data.startTimestamp) / 1000)
           const remaining = DEFAULT_TIME_LIMIT - elapsed
           startRef.current = data.startTimestamp
           setQuestionNumber(data.questionIndex)
@@ -103,18 +125,20 @@ export default function GamePageClient() {
           setGameStarted(true)
           break
         }
-        case 'NEXT_QUESTION': {
+
+        case 'NEXT_QUESTION':
           setQuestionNumber(data.questionIndex)
+          setTimeLeft(DEFAULT_TIME_LIMIT)
           setIsAnswered(false)
           setSelectedAnswer(null)
-          setTimeLeft(DEFAULT_TIME_LIMIT)
           break
-        }
+
         case 'ROOM_CLOSED':
           alert('Host has left. Room closed.')
           socket.close()
           router.push('/')
           break
+
         case 'KICKED':
           alert('You were kicked from the room.')
           socket.close()
@@ -128,58 +152,75 @@ export default function GamePageClient() {
     }
   }, [roomCode, playerName, isHostFlag, router])
 
-  // ─── Fetch Questions on Start ───────────────────────────────▀
-  useEffect(() => {
-    if (!gameStarted || questionsLoaded) return
-    void (async () => {
-      try {
-        const res = await fetch('/api/generate-question', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
-        })
-        const body = await res.json() as { questions?: QuizQuestion[]; error?: string }
-        if (body.questions) {
-          setQuestions(body.questions)
-          setQuestionsLoaded(true)
-        } else {
-          console.error('AI error:', body.error)
-        }
-      } catch (err) {
-        console.error('Failed to load questions', err)
-      }
-    })()
-  }, [gameStarted, questionsLoaded])
-
-  // ─── Countdown & Auto‐Advance ───────────────────────────────
+  // ─── Countdown & Auto-Advance ─────────────────────────────
   useEffect(() => {
     if (!gameStarted) return
+
     if (timeLeft > 0) {
-      const t = setTimeout(() => setTimeLeft((t) => t - 1), 1000)
-      return () => clearTimeout(t)
+      const timer = setTimeout(() => setTimeLeft(t => t - 1), 1000)
+      return () => clearTimeout(timer)
     }
-    // Time expired: auto-send NEXT_QUESTION or end
-    if (questionNumber >= TOTAL_QUESTIONS) {
-      router.push('/game-over')
-    } else if (wsRef.current?.readyState === WebSocket.OPEN) {
+
+  // Finished all questions?
+  if (questionNumber >= TOTAL_QUESTIONS) {
+    // first: drop any duplicate names
+    const uniquePlayers = players.filter(
+      (p, i, arr) => arr.findIndex(x => x.name === p.name) === i
+    );
+
+    // now build results from that list
+    const results: PlayerResult[] = uniquePlayers.map(p => ({
+      id:        p.id,
+      name:      p.name,
+      score:     p.id === youId ? score : 0,                    // only YOU have a real score here
+      correct:   correctCounts[p.id]   ?? 0,                    // your correct count
+      incorrect: incorrectCounts[p.id] ?? 0                     // your incorrect count
+    }));
+
+    // serialize & navigate
+    const qs = new URLSearchParams();
+    qs.set('players', JSON.stringify(results));
+    qs.set('youId', youId);
+    router.push(`/game-over?${qs.toString()}`);
+    return;
+  } else if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
       wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
     }
-  }, [gameStarted, timeLeft, questionNumber, router, roomCode])
+  }, [
+    gameStarted, timeLeft, questionNumber,
+    score, players, youId, router, roomCode
+  ])
 
   // ─── Answer Selection ───────────────────────────────────────
   const currentQuestion =
-    questions[questionNumber - 1] ?? { ...questions[0], question: 'Loading...', options: [], answer: '' }
+    questions[questionNumber - 1] ?? { question: 'Loading...', options: [], answer: '' }
+
   function handleAnswer(opt: string) {
-    if (!gameStarted || isAnswered) return
-    setSelectedAnswer(opt)
-    setIsAnswered(true)
-    if (opt === currentQuestion.answer) {
-      setScore((s) => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000))
+    if (!gameStarted || isAnswered) return;
+    setSelectedAnswer(opt);
+    setIsAnswered(true);
+
+    const isRight = opt === currentQuestion.answer;
+    if (isRight) {
+      // increment your numeric score
+      setScore(s => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000));
+
+      // record one more correct for yourself
+      setCorrectCounts(cc => ({
+        ...cc,
+        [youId]: (cc[youId] || 0) + 1
+      }));
+    } else {
+      // record one more incorrect for yourself
+      setIncorrectCounts(ic => ({
+        ...ic,
+        [youId]: (ic[youId] || 0) + 1
+      }));
     }
   }
 
-  // ─── Chat Sending ──────────────────────────────────────────
+  // ─── Chat Sending ───────────────────────────────────────────
   function sendMessage() {
     if (message.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'CHAT_MESSAGE', roomCode, message }))
@@ -200,7 +241,9 @@ export default function GamePageClient() {
           <div className="text-right text-sm">{timeLeft}s</div>
         </div>
         <Card className="flex-1 p-6 mb-4 flex flex-col">
-          <h2 className="text-xl font-bold mb-8 text-center">{currentQuestion.question}</h2>
+          <h2 className="text-xl font-bold mb-8 text-center">
+            {currentQuestion.question}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
             {currentQuestion.options.map((o, i) => (
               <Button
@@ -252,7 +295,10 @@ export default function GamePageClient() {
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
             placeholder="Type a message..."
           />
-          <button onClick={sendMessage} className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800">
+          <button
+            onClick={sendMessage}
+            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
+          >
             ➤
           </button>
         </div>
