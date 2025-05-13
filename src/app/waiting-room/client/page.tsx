@@ -51,7 +51,7 @@ function WaitingRoomClient() {
   useEffect(() => { hostIdRef.current = hostId; }, [hostId]);
 
   const connectWebSocket = useCallback(() => {
-    const socket = new WebSocket("wss://quiztris.onrender.com");
+    const socket = new WebSocket("ws://localhost:3001");
 
     socket.onopen = () => {
       if (mode === "create") {
