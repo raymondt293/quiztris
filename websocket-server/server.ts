@@ -1,3 +1,4 @@
+// server.ts
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -34,12 +35,13 @@ interface PlayerResult {
 }
 
 const TOTAL_QUESTIONS = 10;
-const wss             = new WebSocketServer({ port: 3001 });
-const rooms: Record<string, Room>        = {};
+const NEXT_API_URL    = process.env.NEXT_API_URL || 'http://localhost:3000';
+
+const wss = new WebSocketServer({ port: 3001 });
+const rooms: Record<string, Room> = {};
 const clientNames: Record<string, string> = {};
 
 // ─── Helpers ──────────────────────────────────────────────────────
-// strip out duplicate IDs, keeping first occurrence
 function uniquePlayers(list: Player[]): Player[] {
   return Array.from(
     new Map(list.map(p => [p.id, p])).values()
@@ -82,11 +84,10 @@ wss.on('connection', (ws) => {
       }));
 
       broadcastToRoom(roomCode, {
-        type:     'PLAYER_LIST',
-        players:  uniquePlayers(rooms[roomCode].players),
-        hostId:   clientId,
+        type:    'PLAYER_LIST',
+        players: uniquePlayers(rooms[roomCode].players),
+        hostId:  clientId,
       });
-
       return;
     }
 
@@ -103,9 +104,7 @@ wss.on('connection', (ws) => {
       }
 
       clientNames[clientId] = data.name;
-      // remove any old entry for this player name (in case of a reconnect)
       room.players = room.players.filter(p => p.name !== data.name);
-      // now add the fresh connection
       room.players.push({ id: clientId, name: data.name });
       room.sockets[clientId] = ws;
 
@@ -116,15 +115,14 @@ wss.on('connection', (ws) => {
       }));
 
       broadcastToRoom(data.roomCode, {
-        type:     'PLAYER_LIST',
-        players:  uniquePlayers(room.players),
-        hostId:   room.host,
+        type:    'PLAYER_LIST',
+        players: uniquePlayers(room.players),
+        hostId:  room.host,
       });
-
       broadcastToRoom(data.roomCode, {
-        type:     'CHAT_MESSAGE',
-        sender:   'System',
-        message:  `${data.name} joined the room.`,
+        type:    'CHAT_MESSAGE',
+        sender:  'System',
+        message: `${data.name} joined the room.`,
       });
 
       if (room.gameStarted && room.startTimestamp && room.questions) {
@@ -135,7 +133,6 @@ wss.on('connection', (ws) => {
           questions:      room.questions,
         }));
       }
-
       return;
     }
 
@@ -164,13 +161,18 @@ wss.on('connection', (ws) => {
       const room = rooms[data.roomCode];
       if (!room || room.host !== clientId) return;
 
-      // fetch questions
       try {
-        const res = await fetch('/api/generate-question', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
-        });
+        const res = await fetch(
+          `${NEXT_API_URL}/api/generate-question`,
+          {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              topic: 'General Knowledge',
+              count: TOTAL_QUESTIONS
+            }),
+          }
+        );
         const body = (await res.json()) as { questions: QuizQuestion[] };
         room.questions = body.questions;
       } catch (err) {
@@ -188,26 +190,21 @@ wss.on('connection', (ws) => {
         questionIndex:  room.currentQuestion,
         questions:      room.questions,
       });
-
       return;
     }
 
     // ─── ANSWER ────────────────────────────────────────────────────
     if (data.type === 'ANSWER') {
-      const msg = data as AnswerMsg;
+      const msg  = data as AnswerMsg;
       const room = rooms[msg.roomCode];
       if (!room || !room.gameStarted) return;
 
-      // add the actual points you earned
       room.scores[msg.playerId] = (room.scores[msg.playerId] || 0) + msg.points;
-
-      // still track correct / incorrect counts if you like:
       if (msg.points > 0) {
         room.correct[msg.playerId] = (room.correct[msg.playerId] || 0) + 1;
       } else {
         room.incorrect[msg.playerId] = (room.incorrect[msg.playerId] || 0) + 1;
       }
-
       return;
     }
 
@@ -219,9 +216,7 @@ wss.on('connection', (ws) => {
       room.currentQuestion += 1;
 
       if (room.currentQuestion > TOTAL_QUESTIONS) {
-        // de-dupe by player ID
         const unique = uniquePlayers(room.players);
-
         const results: PlayerResult[] = unique.map(p => ({
           id:        p.id,
           name:      p.name,
@@ -237,17 +232,16 @@ wss.on('connection', (ws) => {
       } else {
         room.startTimestamp = Date.now();
         broadcastToRoom(data.roomCode, {
-          type:           'NEXT_QUESTION',
-          questionIndex:  room.currentQuestion,
+          type:          'NEXT_QUESTION',
+          questionIndex: room.currentQuestion,
         });
       }
-
       return;
     }
 
     // ─── KICK PLAYER ──────────────────────────────────────────────
     if (data.type === 'KICK_PLAYER') {
-      const room = rooms[data.roomCode];
+      const room      = rooms[data.roomCode];
       if (!room || room.host !== clientId) return;
 
       const kickedWs   = room.sockets[data.playerId];
@@ -272,7 +266,6 @@ wss.on('connection', (ws) => {
         sender:  'System',
         message: `${kickedName} was kicked from the room.`,
       });
-
       return;
     }
 
@@ -307,7 +300,6 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    // mirror LEAVE_ROOM on abrupt disconnect
     if (!clientNames[clientId]) return;
     for (const [code, room] of Object.entries(rooms)) {
       if (room.sockets[clientId]) {
@@ -346,4 +338,4 @@ function broadcastToRoom(roomCode: string, msg: any) {
   }
 }
 
-console.log('✅ WebSocket server listening on ws://localhost:3001');
+console.log(`✅ WebSocket server listening on ws://localhost:3001, Next API at ${NEXT_API_URL}`);
