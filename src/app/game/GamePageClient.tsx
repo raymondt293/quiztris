@@ -9,15 +9,6 @@ import { Progress } from '~/components/ui/progress'
 type QuizQuestion = { question: string; options: string[]; answer: string }
 type Player       = { id: string; name: string }
 type ChatMessage  = { sender: string; message: string; timestamp: string }
-type ServerMessage =
-  | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
-  | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
-  | { type: 'ERROR'; message: string }
-  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number; questions: QuizQuestion[] }
-  | { type: 'NEXT_QUESTION'; questionIndex: number }
-  | { type: 'ROOM_CLOSED' }
-  | { type: 'KICKED' }
-
 interface PlayerResult {
   id: string
   name: string
@@ -25,6 +16,15 @@ interface PlayerResult {
   correct: number
   incorrect: number
 }
+type ServerMessage =
+  | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
+  | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
+  | { type: 'ERROR'; message: string }
+  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number; questions: QuizQuestion[] }
+  | { type: 'NEXT_QUESTION'; questionIndex: number }
+  | { type: 'GAME_OVER';      results: PlayerResult[] }
+  | { type: 'ROOM_CLOSED' }
+  | { type: 'KICKED' }
 
 const DEFAULT_TIME_LIMIT = 20
 const TOTAL_QUESTIONS    = 10
@@ -40,7 +40,6 @@ export default function GamePageClient() {
   const [players, setPlayers] = useState<Player[]>([])
   const [hostId, setHostId]   = useState<string>('')
 
-  // Once we have the players list, grab your own ID
   const youId = players.find((p) => p.name === playerName)?.id ?? ''
 
   // ─── Chat State ───────────────────────────────────────────
@@ -49,18 +48,18 @@ export default function GamePageClient() {
   const wsRef                 = useRef<WebSocket | null>(null)
 
   // ─── Quiz State ───────────────────────────────────────────
-  const [questions, setQuestions]       = useState<QuizQuestion[]>([])
-  const [gameStarted, setGameStarted]   = useState(false)
+  const [questions, setQuestions]           = useState<QuizQuestion[]>([])
+  const [gameStarted, setGameStarted]       = useState(false)
   const [questionNumber, setQuestionNumber] = useState(0)
-  const [timeLeft, setTimeLeft]         = useState(0)
-  const [isAnswered, setIsAnswered]     = useState(false)
+  const [timeLeft, setTimeLeft]             = useState(0)
+  const [isAnswered, setIsAnswered]         = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
-  const [score, setScore]               = useState(0)
-  const startRef                        = useRef<number>(0)
+  const [score, setScore]                   = useState(0)
+  const startRef                            = useRef<number>(0)
 
-  // ─── Score Tracking ─────────────────────────────────────────
-  const [correctCounts, setCorrectCounts]     = useState<Record<string, number>>({});
-  const [incorrectCounts, setIncorrectCounts] = useState<Record<string, number>>({});
+  // ─── Score Tracking ───────────────────────────────────────
+  const [correctCounts, setCorrectCounts]     = useState<Record<string, number>>({})
+  const [incorrectCounts, setIncorrectCounts] = useState<Record<string, number>>({})
 
   // ─── Connect & Handle Messages ────────────────────────────
   useEffect(() => {
@@ -85,11 +84,10 @@ export default function GamePageClient() {
       const data = JSON.parse(evt.data) as ServerMessage
 
       switch (data.type) {
-        // ─── De-dupe the PLAYER_LIST ───────────────────────────
         case 'PLAYER_LIST': {
-          // filter out any duplicate IDs
+          // de-dupe by name (so re-joins don’t show twice)
           const unique = data.players.filter(
-            (p, idx, arr) => arr.findIndex(x => x.id === p.id) === idx
+            (p, idx, arr) => arr.findIndex(x => x.name === p.name) === idx
           )
           setPlayers(unique)
           setHostId(data.hostId)
@@ -117,7 +115,7 @@ export default function GamePageClient() {
           setQuestions(data.questions)
           const elapsed   = Math.floor((Date.now() - data.startTimestamp) / 1000)
           const remaining = DEFAULT_TIME_LIMIT - elapsed
-          startRef.current = data.startTimestamp
+          startRef.current     = data.startTimestamp
           setQuestionNumber(data.questionIndex)
           setTimeLeft(Math.max(remaining, 0))
           setIsAnswered(false)
@@ -133,6 +131,20 @@ export default function GamePageClient() {
           setSelectedAnswer(null)
           break
 
+        case 'GAME_OVER': {
+          // Remove any accidental duplicates by player ID
+          const uniqueResults = data.results.filter(
+            (p, i, arr) => arr.findIndex(x => x.id === p.id) === i
+        )
+
+          // Navigate with only the unique results
+          const qs = new URLSearchParams()
+          qs.set('players', JSON.stringify(uniqueResults))
+          qs.set('youId', youId)
+          router.push(`/game-over?${qs.toString()}`)
+          break
+        }
+
         case 'ROOM_CLOSED':
           alert('Host has left. Room closed.')
           socket.close()
@@ -147,9 +159,7 @@ export default function GamePageClient() {
       }
     })
 
-    return () => {
-      socket.close()
-    }
+    return () => socket.close()
   }, [roomCode, playerName, isHostFlag, router])
 
   // ─── Countdown & Auto-Advance ─────────────────────────────
@@ -161,69 +171,58 @@ export default function GamePageClient() {
       return () => clearTimeout(timer)
     }
 
-  // Finished all questions?
-  if (questionNumber >= TOTAL_QUESTIONS) {
-    // first: drop any duplicate names
-    const uniquePlayers = players.filter(
-      (p, i, arr) => arr.findIndex(x => x.name === p.name) === i
-    );
-
-    // now build results from that list
-    const results: PlayerResult[] = uniquePlayers.map(p => ({
-      id:        p.id,
-      name:      p.name,
-      score:     p.id === youId ? score : 0,                    // only YOU have a real score here
-      correct:   correctCounts[p.id]   ?? 0,                    // your correct count
-      incorrect: incorrectCounts[p.id] ?? 0                     // your incorrect count
-    }));
-
-    // serialize & navigate
-    const qs = new URLSearchParams();
-    qs.set('players', JSON.stringify(results));
-    qs.set('youId', youId);
-    router.push(`/game-over?${qs.toString()}`);
-    return;
-  } else if (wsRef.current?.readyState === WebSocket.OPEN) {
+    // On timeout, always ask the server to advance (or end) the game
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
-      wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
+      wsRef.current.send(JSON.stringify({
+        type:     'NEXT_QUESTION',
+        roomCode,
+      }))
     }
-  }, [
-    gameStarted, timeLeft, questionNumber,
-    score, players, youId, router, roomCode
-  ])
+  }, [gameStarted, timeLeft, roomCode])
 
   // ─── Answer Selection ───────────────────────────────────────
   const currentQuestion =
     questions[questionNumber - 1] ?? { question: 'Loading...', options: [], answer: '' }
 
   function handleAnswer(opt: string) {
-    if (!gameStarted || isAnswered) return;
-    setSelectedAnswer(opt);
-    setIsAnswered(true);
+    if (!gameStarted || isAnswered) return
+    setSelectedAnswer(opt)
+    setIsAnswered(true)
 
-    const isRight = opt === currentQuestion.answer;
-    if (isRight) {
-      // increment your numeric score
-      setScore(s => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000));
+    const isRight = opt === currentQuestion.answer
+    // how many points you just earned
+    const earned = isRight
+      ? Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000)
+      : 0
 
-      // record one more correct for yourself
-      setCorrectCounts(cc => ({
-        ...cc,
-        [youId]: (cc[youId] || 0) + 1
-      }));
+    // update your local totals
+    if (earned > 0) {
+      setScore(s => s + earned)
+      setCorrectCounts(cc => ({ ...cc, [youId]: (cc[youId] || 0) + 1 }))
     } else {
-      // record one more incorrect for yourself
-      setIncorrectCounts(ic => ({
-        ...ic,
-        [youId]: (ic[youId] || 0) + 1
-      }));
+      setIncorrectCounts(ic => ({ ...ic, [youId]: (ic[youId] || 0) + 1 }))
+    }
+
+    // Tell the server who answered and whether it was correct
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type:     'ANSWER',
+        roomCode,
+        playerId: youId,
+        points:   earned,
+      }))
     }
   }
 
   // ─── Chat Sending ───────────────────────────────────────────
   function sendMessage() {
     if (message.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'CHAT_MESSAGE', roomCode, message }))
+      wsRef.current.send(JSON.stringify({
+        type:    'CHAT_MESSAGE',
+        roomCode,
+        message,
+      }))
       setMessage('')
     }
   }

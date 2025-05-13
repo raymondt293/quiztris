@@ -26,11 +26,14 @@ export default function GameOverPage() {
     players = []
   }
 
-  // sort descending by score
-  const sorted = [...players].sort((a, b) => b.score - a.score)
+  // de-duplicate and sort by score
+  const unique = Array.from(
+    new Map(players.map(p => [p.id, p])).values()
+  )
+  const sorted = unique.sort((a, b) => b.score - a.score)
 
-  // find you for header
-  const you = players.find(p => p.id === youId)
+  // find current user
+  const you = sorted.find(p => p.id === youId)
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-50 to-purple-100">
