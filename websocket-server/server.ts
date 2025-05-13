@@ -11,7 +11,8 @@ interface Room {
   currentQuestion: number;
 }
 
-const wss = new WebSocketServer({ port: 3001 });
+const port = Number(process.env.PORT) || 3001;
+const wss = new WebSocketServer({ port });
 const rooms: Record<string, Room> = {};
 const clientNames: Record<string, string> = {};
 
