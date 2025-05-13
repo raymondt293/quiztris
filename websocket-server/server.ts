@@ -166,7 +166,7 @@ wss.on('connection', (ws) => {
 
       // fetch questions
       try {
-        const res = await fetch('http://localhost:3000/api/generate-question', {
+        const res = await fetch('/api/generate-question', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
