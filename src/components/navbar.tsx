@@ -19,7 +19,7 @@ export default function NavBar() {
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-4">
-          <Link href="/host">
+          <Link href="/admin">
             <Button variant="ghost" className="text-white hover:text-purple-400">
               Host Game
             </Button>

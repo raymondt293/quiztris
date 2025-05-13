@@ -21,6 +21,9 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.19.2",
+    "@radix-ui/react-avatar": "^1.1.9",
+    "@google-ai/generativelanguage": "^3.1.0",
+    "@google/genai": "^0.13.0",
     "@radix-ui/react-label": "^2.1.2",
     "@radix-ui/react-progress": "^1.1.2",
     "@radix-ui/react-scroll-area": "^1.2.3",
@@ -48,7 +51,7 @@
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.0.15",
     "@types/node": "^20.17.30",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.1.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.0",
@@ -60,6 +63,7 @@
     "prettier-plugin-tailwindcss": "^0.6.11",
     "tailwindcss": "^4.0.15",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.27.0"
   },
