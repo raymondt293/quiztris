@@ -6,6 +6,8 @@ import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Progress } from '~/components/ui/progress'
 
+// ─── Types ───────────────────────────────────────────────────────
+type QuizQuestion = { question: string; options: string[]; answer: string }
 type Player = { id: string; name: string }
 type ChatMessage = { sender: string; message: string; timestamp: string }
 type ServerMessage =
@@ -13,15 +15,13 @@ type ServerMessage =
   | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
   | { type: 'ERROR'; message: string }
   | { type: 'GAME_START'; startTimestamp: number; questionIndex: number }
+  | { type: 'NEXT_QUESTION'; questionIndex: number }
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
 
-const mockQuestion = {
-  question: 'Which planet is known as the Red Planet?',
-  options: ['Venus', 'Mars', 'Jupiter', 'Saturn'] as string[],
-  correctAnswer: 'Mars',
-  timeLimit: 20,
-}
+// ─── Defaults ────────────────────────────────────────────────────
+const DEFAULT_TIME_LIMIT = 20
+const TOTAL_QUESTIONS = 10
 
 export default function GamePageClient() {
   const router = useRouter()
@@ -39,7 +39,9 @@ export default function GamePageClient() {
   const [message, setMessage] = useState('')
   const wsRef = useRef<WebSocket | null>(null)
 
-  // ─── Quiz Sync ──────────────────────────────────────────────
+  // ─── Quiz State ──────────────────────────────────────────────
+  const [questions, setQuestions] = useState<QuizQuestion[]>([])
+  const [questionsLoaded, setQuestionsLoaded] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
   const [questionNumber, setQuestionNumber] = useState(0)
   const [timeLeft, setTimeLeft] = useState(0)
@@ -47,7 +49,6 @@ export default function GamePageClient() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
   const [score, setScore] = useState(0)
   const startRef = useRef<number>(0)
-  const totalQuestions = 10
 
   // ─── Connect & Handle Server Messages ───────────────────────
   useEffect(() => {
@@ -69,7 +70,8 @@ export default function GamePageClient() {
       )
     })
 
-    socket.addEventListener('message', (evt: MessageEvent<string>) => {
+    socket.addEventListener('message', (evt) => {
+      if (typeof evt.data !== 'string') return
       const data = JSON.parse(evt.data) as ServerMessage
       switch (data.type) {
         case 'PLAYER_LIST':
@@ -77,11 +79,8 @@ export default function GamePageClient() {
           setHostId(data.hostId)
           break
         case 'CHAT_MESSAGE': {
-          const ts = new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-          setChat(c => [
+          const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          setChat((c) => [
             ...c,
             { sender: data.sender ?? 'System', message: data.message, timestamp: ts },
           ])
@@ -93,14 +92,22 @@ export default function GamePageClient() {
           router.push('/')
           break
         case 'GAME_START': {
+          // Sync start timestamp and question index
           const elapsed = Math.floor((Date.now() - data.startTimestamp) / 1000)
-          const remaining = mockQuestion.timeLimit - elapsed
+          const remaining = DEFAULT_TIME_LIMIT - elapsed
           startRef.current = data.startTimestamp
           setQuestionNumber(data.questionIndex)
           setTimeLeft(Math.max(remaining, 0))
           setIsAnswered(false)
           setSelectedAnswer(null)
           setGameStarted(true)
+          break
+        }
+        case 'NEXT_QUESTION': {
+          setQuestionNumber(data.questionIndex)
+          setIsAnswered(false)
+          setSelectedAnswer(null)
+          setTimeLeft(DEFAULT_TIME_LIMIT)
           break
         }
         case 'ROOM_CLOSED':
@@ -121,35 +128,58 @@ export default function GamePageClient() {
     }
   }, [roomCode, playerName, isHostFlag, router])
 
-  // ─── Countdown & Auto‐Advance on Timeout ────────────────────
+  // ─── Fetch Questions on Start ───────────────────────────────▀
+  useEffect(() => {
+    if (!gameStarted || questionsLoaded) return
+    void (async () => {
+      try {
+        const res = await fetch('/api/generate-question', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
+        })
+        const body = await res.json() as { questions?: QuizQuestion[]; error?: string }
+        if (body.questions) {
+          setQuestions(body.questions)
+          setQuestionsLoaded(true)
+        } else {
+          console.error('AI error:', body.error)
+        }
+      } catch (err) {
+        console.error('Failed to load questions', err)
+      }
+    })()
+  }, [gameStarted, questionsLoaded])
+
+  // ─── Countdown & Auto‐Advance ───────────────────────────────
   useEffect(() => {
     if (!gameStarted) return
     if (timeLeft > 0) {
-      const t = setTimeout(() => setTimeLeft(t => t - 1), 1000)
+      const t = setTimeout(() => setTimeLeft((t) => t - 1), 1000)
       return () => clearTimeout(t)
     }
-    // When time runs out, check if it's the last question
-    if (questionNumber >= totalQuestions) {
+    // Time expired: auto-send NEXT_QUESTION or end
+    if (questionNumber >= TOTAL_QUESTIONS) {
       router.push('/game-over')
-      return
-    }
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    } else if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
       wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
     }
-  }, [gameStarted, timeLeft, roomCode, questionNumber, totalQuestions, router])
+  }, [gameStarted, timeLeft, questionNumber, router, roomCode])
 
   // ─── Answer Selection ───────────────────────────────────────
+  const currentQuestion =
+    questions[questionNumber - 1] ?? { ...questions[0], question: 'Loading...', options: [], answer: '' }
   function handleAnswer(opt: string) {
     if (!gameStarted || isAnswered) return
     setSelectedAnswer(opt)
     setIsAnswered(true)
-    if (opt === mockQuestion.correctAnswer) {
-      setScore(s => s + Math.ceil((timeLeft / mockQuestion.timeLimit) * 1000))
+    if (opt === currentQuestion.answer) {
+      setScore((s) => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000))
     }
   }
 
-  // ─── Send Chat ──────────────────────────────────────────────
+  // ─── Chat Sending ──────────────────────────────────────────
   function sendMessage() {
     if (message.trim() && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'CHAT_MESSAGE', roomCode, message }))
@@ -162,20 +192,17 @@ export default function GamePageClient() {
       {/* Quiz Panel */}
       <div className="flex-1 p-4 flex flex-col">
         <div className="mb-4 flex justify-between">
-          <span>Question {questionNumber}/{totalQuestions}</span>
+          <span>Question {questionNumber}/{TOTAL_QUESTIONS}</span>
           <span>Score: {score}</span>
         </div>
         <div className="mb-4">
-          <Progress
-            value={(timeLeft / mockQuestion.timeLimit) * 100}
-            className="h-2"
-          />
+          <Progress value={(timeLeft / DEFAULT_TIME_LIMIT) * 100} className="h-2" />
           <div className="text-right text-sm">{timeLeft}s</div>
         </div>
         <Card className="flex-1 p-6 mb-4 flex flex-col">
-          <h2 className="text-xl font-bold mb-8 text-center">{mockQuestion.question}</h2>
+          <h2 className="text-xl font-bold mb-8 text-center">{currentQuestion.question}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
-            {mockQuestion.options.map((o, i) => (
+            {currentQuestion.options.map((o, i) => (
               <Button
                 key={i}
                 onClick={() => handleAnswer(o)}
@@ -183,7 +210,7 @@ export default function GamePageClient() {
                 className={`h-20 text-lg ${
                   !isAnswered
                     ? ''
-                    : o === mockQuestion.correctAnswer
+                    : o === currentQuestion.answer
                     ? 'bg-green-500 hover:bg-green-600'
                     : o === selectedAnswer
                     ? 'bg-red-500 hover:bg-red-600'
@@ -202,7 +229,7 @@ export default function GamePageClient() {
         <div className="px-4 py-3 border-b flex justify-between items-center">
           <h2 className="text-lg font-semibold">Chat</h2>
           <span className="text-sm">
-            Host: {players.find(p => p.id === hostId)?.name ?? '—'}
+            Host: {players.find((p) => p.id === hostId)?.name ?? '—'}
           </span>
         </div>
         <div className="chat-scroll flex-1 overflow-y-auto px-4 py-2 space-y-4 text-sm">
@@ -221,14 +248,11 @@ export default function GamePageClient() {
             type="text"
             className="flex-1 border rounded-full px-4 py-2 text-sm"
             value={message}
-            onChange={e => setMessage(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && sendMessage()}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
             placeholder="Type a message..."
           />
-          <button
-            onClick={sendMessage}
-            className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800"
-          >
+          <button onClick={sendMessage} className="bg-black text-white w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-800">
             ➤
           </button>
         </div>
