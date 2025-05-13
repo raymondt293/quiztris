@@ -10,6 +10,7 @@ function RedirectLogic() {
 
   useEffect(() => {
     const code = params.get("gameCode") ?? "";
+    const gameMode = params.get("gameMode") ?? "normal";
     const mode = code ? "join" : "create";
     const name = params.get("playerName") ?? params.get("email") ?? "";
 
@@ -23,6 +24,7 @@ function RedirectLogic() {
       code,
       mode,
       name,
+      gameMode
     });
 
     router.replace(`/waiting-room/client?${query.toString()}`);
