@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { Button } from "~/components/ui/button";
@@ -23,7 +23,7 @@ type ServerMessage =
   | { type: "ROOM_CLOSED" }
   | { type: "ERROR"; message: string };
 
-export default function WaitingRoomPage() {
+function WaitingRoomClient() {
   const router = useRouter();
   const params = useSearchParams();
   const { user } = useUser();
@@ -264,5 +264,13 @@ export default function WaitingRoomPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function WaitingRoomPage() {
+  return (
+    <Suspense fallback={<div className="p-4">Loading…</div>}>
+      <WaitingRoomClient />
+    </Suspense>
   );
 }
