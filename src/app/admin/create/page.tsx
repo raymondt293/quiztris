@@ -241,9 +241,44 @@ export default function CreateQuizPage() {
   }
 }
 
-  const handleSave = () => {
-    console.log('Saving quiz:', quiz)
-    alert('Quiz saved successfully!')
+  const handleSave = async () => {
+    try {
+      // 1) build the payload matching your API route:
+      const payload = {
+        hostId: 1,               // ← replace with real host/user ID
+        title:  quiz.title,
+        questions: quiz.questions.map((q) => ({
+          question:   q.text,
+          type:       q.type,
+          time_limit: q.timeLimit,
+          points:     q.points,
+          media:      q.media?.url ?? null,
+          answers:    q.answers.map((a) => ({
+            text:       a.text,
+            is_correct: a.isCorrect,
+          })),
+        })),
+      }
+  
+      // 2) POST it:
+      const res = await fetch("/api/quizzes", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      
+      alert("Quiz saved successfully!")
+      
+      // 3) pull the new quizId out of the JSON
+      const { quizId } = (await res.json()) as { quizId: number }
+  
+      // 4) navigate to the admin game page
+      router.push("/admin")
+    } catch (err) {
+      console.error(err)
+      alert("There was a problem saving your quiz. Please try again.")
+    }
   }
   const handleExit = () => {
     if (confirm('Are you sure you want to exit? Any unsaved changes will be lost.')) {
