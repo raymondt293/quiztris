@@ -4,14 +4,16 @@ import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Card } from "~/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
-import { SignInButton, useAuth } from "@clerk/nextjs"
-import { redirect } from "next/navigation"
+import { SignInButton, useAuth, useUser } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 
 export default function JoinPage({ searchParams }: { searchParams: { code?: string; mode?: string } }) {
   const gameCode = searchParams.code ?? ""
   const gameMode = searchParams.mode ?? "normal"
   const { userId } = useAuth()
+  const { user } = useUser()
+  const router = useRouter()
 
   const getGameModeTitle = (mode: string) => {
     const modes: Record<string, string> = {
@@ -24,12 +26,14 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
     return modes[mode] ?? "Game"
   }
 
-  // If user is signed in, redirect to game page
   useEffect(() => {
-    if (userId) {
-      redirect(`/game?code=${gameCode}&mode=${gameMode}`)
+    if (userId && user) {
+      const displayName = user.fullName ?? user.username ?? user.firstName ?? "Player"
+      const encodedName = encodeURIComponent(displayName)
+      router.push(`/waiting-room/client?code=${gameCode}&mode=create&name=${encodedName}&gameMode=${gameMode}`)
     }
-  }, [userId, gameCode, gameMode])
+  }, [userId, user, gameCode, gameMode, router])
+
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-50 to-purple-100">
@@ -51,6 +55,7 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
             <TabsContent value="guest">
               <form action="/waiting-room" className="space-y-4">
                 <input type="hidden" name="gameMode" value={gameMode} />
+                <input type="hidden" name="gameCode" value={gameCode} />
                 <div className="space-y-2">
                   <Input name="playerName" placeholder="Enter your name" required className="text-center text-lg" />
                 </div>
