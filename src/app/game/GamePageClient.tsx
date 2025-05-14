@@ -284,24 +284,26 @@ export default function GamePageClient() {
         <Card className="flex-1 p-6 mb-4 flex flex-col">
           <h2 className="text-xl font-bold mb-8 text-center">{currentQuestion.question}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
-            {currentQuestion.options.map((o, i) => (
-              <Button
-                key={i}
-                onClick={() => handleAnswer(o)}
-                disabled={isAnswered}
-                className={`h-20 text-lg ${
-                  !isAnswered
-                    ? ''
-                    : o === currentQuestion.answer
-                    ? 'bg-green-500 hover:bg-green-600'
-                    : o === selectedAnswer
-                    ? 'bg-red-500 hover:bg-red-600'
-                    : 'opacity-50'
-                }`}
-              >
-                {o}
-              </Button>
-            ))}
+            {[...currentQuestion.options]
+              .sort(() => Math.random() - 0.5)
+              .map((o, i) => (
+                <Button
+                  key={i}
+                  onClick={() => handleAnswer(o)}
+                  disabled={isAnswered}
+                  className={`h-20 text-lg ${
+                    !isAnswered
+                      ? ''
+                      : o === currentQuestion.answer
+                      ? 'bg-green-500 hover:bg-green-600'
+                      : o === selectedAnswer
+                      ? 'bg-red-500 hover:bg-red-600'
+                      : 'opacity-50'
+                  }`}
+                >
+                  {o}
+                </Button>
+              ))}
           </div>
         </Card>
       </div>
