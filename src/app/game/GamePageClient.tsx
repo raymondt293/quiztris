@@ -56,6 +56,7 @@ export default function GamePageClient() {
   const startRef = useRef<number>(0)
   const [correctAnswers, setCorrectAnswers] = useState(0)
   const [incorrectAnswers, setIncorrectAnswers] = useState(0)
+  const [randomizedOptions, setRandomizedOptions] = useState<string[]>([])
 
   // ─── Connect & Handle Server Messages ───────────────────────
   useEffect(() => {
@@ -244,11 +245,20 @@ export default function GamePageClient() {
       setIsAnswered(true)
       wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
     }
-  }, [gameStarted, timeLeft, questionNumber, router, roomCode])
+  }, [gameStarted, timeLeft, questionNumber, router, roomCode, playerId, playerName, score, correctAnswers, incorrectAnswers])
 
-  // ─── Answer Selection ───────────────────────────────────────
+  // Get current question
   const currentQuestion =
     questions[questionNumber - 1] ?? { ...questions[0], question: 'Loading...', options: [], answer: '' }
+
+  // Randomize options when question changes
+  useEffect(() => {
+    if (currentQuestion.options.length > 0) {
+      setRandomizedOptions([...currentQuestion.options].sort(() => Math.random() - 0.5));
+    }
+  }, [currentQuestion]);
+
+  // ─── Answer Selection ───────────────────────────────────────
   function handleAnswer(opt: string) {
     if (!gameStarted || isAnswered) return
     setSelectedAnswer(opt)
@@ -284,26 +294,24 @@ export default function GamePageClient() {
         <Card className="flex-1 p-6 mb-4 flex flex-col">
           <h2 className="text-xl font-bold mb-8 text-center">{currentQuestion.question}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
-            {[...currentQuestion.options]
-              .sort(() => Math.random() - 0.5)
-              .map((o, i) => (
-                <Button
-                  key={i}
-                  onClick={() => handleAnswer(o)}
-                  disabled={isAnswered}
-                  className={`h-20 text-lg ${
-                    !isAnswered
-                      ? ''
-                      : o === currentQuestion.answer
-                      ? 'bg-green-500 hover:bg-green-600'
-                      : o === selectedAnswer
-                      ? 'bg-red-500 hover:bg-red-600'
-                      : 'opacity-50'
-                  }`}
-                >
-                  {o}
-                </Button>
-              ))}
+            {randomizedOptions.map((o, i) => (
+              <Button
+                key={i}
+                onClick={() => handleAnswer(o)}
+                disabled={isAnswered}
+                className={`h-20 text-lg ${
+                  !isAnswered
+                    ? ''
+                    : o === currentQuestion.answer
+                    ? 'bg-green-500 hover:bg-green-600'
+                    : o === selectedAnswer
+                    ? 'bg-red-500 hover:bg-red-600'
+                    : 'opacity-50'
+                }`}
+              >
+                {o}
+              </Button>
+            ))}
           </div>
         </Card>
       </div>
