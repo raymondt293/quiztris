@@ -9,6 +9,7 @@ interface Room {
   gameStarted: boolean;
   startTimestamp?: number;
   currentQuestion: number;
+  topic?: string;
 }
 
 const port = Number(process.env.PORT) || 3001;
@@ -118,15 +119,18 @@ wss.on('connection', (ws: WebSocket) => {
 
     // ─── START GAME ────────────────────────────────────────────
     if (data.type === 'START_GAME') {
+      console.log('Received START_GAME:', data);
       const room = rooms[data.roomCode];
       if (!room || room.host !== clientId) return;
       room.gameStarted = true;
       room.currentQuestion = 1;
       room.startTimestamp = Date.now();
+      room.topic = data.topic
       broadcastToRoom(data.roomCode, {
         type: 'GAME_START',
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
+        topic: room.topic,
       });
       return;
     }

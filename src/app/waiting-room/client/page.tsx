@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Badge } from "~/components/ui/badge";
 import { Copy, LogOut, Crown, UserX, Users } from "lucide-react";
 import { useToast } from "~/hooks/use-toast";
+import { TopicModal } from "~/components/topic-modal";
 
 // Types
 type Player = { id: string; name: string };
@@ -38,6 +39,7 @@ function WaitingRoomClient() {
   const [hostId, setHostId] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [gameMode, setGameMode] = useState("normal");
+  const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
 
   const mode = params.get("mode") ?? "create";
   const codeParam = params.get("code") ?? "";
@@ -153,7 +155,20 @@ function WaitingRoomClient() {
   };
 
   const startGame = () => {
-    ws?.send(JSON.stringify({ type: "START_GAME", roomCode }));
+    setIsTopicModalOpen(true);
+  };
+
+  const handleTopicSubmit = (topic: string) => {
+    setIsTopicModalOpen(false);
+    const message = {
+      type: "START_GAME",
+      roomCode,
+      topic,
+    };
+  
+    console.log("Sending START_GAME message:", message);
+    
+    ws?.send(JSON.stringify({ type: "START_GAME", roomCode, topic }));
   };
 
   const sendMessage = () => {
@@ -286,6 +301,11 @@ function WaitingRoomClient() {
           </div>
         </div>
       </div>
+      <TopicModal
+        isOpen={isTopicModalOpen}
+        onClose={() => setIsTopicModalOpen(false)}
+        onSubmit={handleTopicSubmit}
+      />
     </div>
   );
 }

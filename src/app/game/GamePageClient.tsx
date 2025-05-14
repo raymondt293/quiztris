@@ -14,7 +14,7 @@ type ServerMessage =
   | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
   | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
   | { type: 'ERROR'; message: string }
-  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number }
+  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number; topic: string }
   | { type: 'NEXT_QUESTION'; questionIndex: number }
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
@@ -48,6 +48,7 @@ export default function GamePageClient() {
   const [isAnswered, setIsAnswered] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
   const [score, setScore] = useState(0)
+  const [topic, setTopic] = useState<string>('')
   const startRef = useRef<number>(0)
 
   // ─── Connect & Handle Server Messages ───────────────────────
@@ -101,6 +102,7 @@ export default function GamePageClient() {
           setIsAnswered(false)
           setSelectedAnswer(null)
           setGameStarted(true)
+          setTopic(data.topic)
           break
         }
         case 'NEXT_QUESTION': {
@@ -136,7 +138,7 @@ export default function GamePageClient() {
         const res = await fetch('/api/generate-question', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
+          body: JSON.stringify({ topic, count: TOTAL_QUESTIONS }),
         })
         const body = await res.json() as { questions?: QuizQuestion[]; error?: string }
         if (body.questions) {
@@ -149,7 +151,7 @@ export default function GamePageClient() {
         console.error('Failed to load questions', err)
       }
     })()
-  }, [gameStarted, questionsLoaded])
+  }, [gameStarted, questionsLoaded, topic])
 
   // ─── Countdown & Auto‐Advance ───────────────────────────────
   useEffect(() => {
