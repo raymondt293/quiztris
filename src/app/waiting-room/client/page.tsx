@@ -98,6 +98,11 @@ function WaitingRoomClient() {
           setRoomCode(data.roomCode);
           roomRef.current = data.roomCode;
           setPlayerId(data.playerId);
+          console.log('Current player ID:', data.playerId)
+
+          // remove previous playerId from localStorage if it exists, then store new one
+          localStorage.removeItem('playerId');
+          localStorage.setItem('playerId', data.playerId)
           break;
         case "PLAYER_LIST":
           setPlayers(data.players);
@@ -165,9 +170,9 @@ function WaitingRoomClient() {
       roomCode,
       topic,
     };
-  
+
     console.log("Sending START_GAME message:", message);
-    
+
     ws?.send(JSON.stringify({ type: "START_GAME", roomCode, topic }));
   };
 

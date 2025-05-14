@@ -16,12 +16,20 @@ type PlayerScore = {
 
 export default function GameOverPage() {
   const [players, setPlayers] = useState<PlayerScore[]>([])
+  const [playerId, setPlayerId] = useState<string>('')
 
   useEffect(() => {
-    // Get scores from localStorage
+    // Get scores and player ID from localStorage
     const scores = localStorage.getItem('gameScores')
+    console.log('Scores:', scores)
+    const id = localStorage.getItem('playerId')
+
     if (scores) {
       setPlayers(JSON.parse(scores))
+    }
+
+    if (id) {
+      setPlayerId(id)
     }
   }, [])
 
@@ -57,13 +65,13 @@ export default function GameOverPage() {
               <div
                 key={player.id}
                 className={`grid grid-cols-12 p-3 text-sm border-b border-gray-100 ${
-                  player.id === localStorage.getItem('playerId') ? "bg-purple-50 font-medium" : ""
+                  player.id === playerId ? "bg-purple-50 font-medium" : ""
                 }`}
               >
                 <div className="col-span-1">{index + 1}</div>
                 <div className="col-span-5">
                   {player.name}
-                  {player.id === localStorage.getItem('playerId') && <span className="ml-2 text-xs text-purple-600">(You)</span>}
+                  {player.id === playerId && <span className="ml-2 text-xs text-purple-600">(You)</span>}
                 </div>
                 <div className="col-span-2 text-right">{player.score.toLocaleString()}</div>
                 <div className="col-span-2 text-right text-green-600">{player.correct}</div>

@@ -19,6 +19,8 @@ type ServerMessage =
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
   | { type: 'QUESTIONS_SHARED'; questions: QuizQuestion[] }
+  | { type: 'ADD_SCORE'; playerId: string; score: number }
+  | { type: 'CURRENT_PLAYER'; playerId: string }
 
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_TIME_LIMIT = 20
@@ -29,6 +31,7 @@ export default function GamePageClient() {
   const params = useSearchParams()
   const roomCode = params.get('code') ?? ''
   const playerName = params.get('name') ?? ''
+  const [playerId, setPlayerId] = useState<string>('')
   const isHostFlag = params.get('isHost') === 'true'
 
   // ─── Room & Host ───────────────────────────────────────────
@@ -51,6 +54,8 @@ export default function GamePageClient() {
   const [score, setScore] = useState(0)
   const [topic, setTopic] = useState<string>('')
   const startRef = useRef<number>(0)
+  const [correctAnswers, setCorrectAnswers] = useState(0)
+  const [incorrectAnswers, setIncorrectAnswers] = useState(0)
 
   // ─── Connect & Handle Server Messages ───────────────────────
   useEffect(() => {
@@ -79,6 +84,12 @@ export default function GamePageClient() {
         case 'PLAYER_LIST':
           setPlayers(data.players)
           setHostId(data.hostId)
+
+          // set the playerId; either from the host or localStorage
+          setPlayerId(isHostFlag ? data.hostId : (localStorage.getItem('playerId') ?? ''))
+
+          // let's also reset the scores in localStorage if this is a new game
+          localStorage.removeItem('gameScores');
           break
         case 'CHAT_MESSAGE': {
           const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -120,13 +131,40 @@ export default function GamePageClient() {
         case 'ROOM_CLOSED':
           alert('Host has left. Room closed.')
           socket.close()
-          router.push('/')
+          router.push('/game-over')
           break
         case 'KICKED':
           alert('You were kicked from the room.')
           socket.close()
           router.push('/')
           break
+        case 'ADD_SCORE':
+          console.log("RECEIVED FINAL SCORE OF PLAYER: ", data.playerId);
+
+          // Get existing scores from localStorage
+          const existingScoresStr = localStorage.getItem('gameScores');
+          let allScores = [];
+
+          if (existingScoresStr) {
+            try {
+              allScores = JSON.parse(existingScoresStr);
+            } catch (e) {
+              console.error("Error parsing existing scores:", e);
+              allScores = [];
+            }
+          }
+
+          // Check if this player's score already exists
+          const existingIndex = allScores.findIndex((s: any) => s.id === data.playerId);
+          if (existingIndex >= 0) {
+            allScores[existingIndex] = data.score;
+          } else {
+            allScores.push(data.score);
+          }
+
+          // save back to localStorage
+          localStorage.setItem('gameScores', JSON.stringify(allScores));
+          break;
       }
     })
 
@@ -135,6 +173,7 @@ export default function GamePageClient() {
     }
   }, [roomCode, playerName, isHostFlag, router])
 
+  // ─── Fetch Questions (Host or Player) ────────────────────────────────────────
   useEffect(() => {
     if (!gameStarted || !isHostFlag || questionsLoaded) return;
 
@@ -185,6 +224,21 @@ export default function GamePageClient() {
     }
     // Time expired: auto-send NEXT_QUESTION or end
     if (questionNumber >= TOTAL_QUESTIONS) {
+      // Game over: send scores to server so it can broadcast to all players
+      // wsRef.current! b/c the websocket should be open...
+      wsRef.current!.send(
+        JSON.stringify({
+          type: 'SUBMIT_SCORE',
+          roomCode,
+          score: {
+            id: playerId,
+            name: playerName,
+            score: score,
+            correct: correctAnswers,
+            incorrect: incorrectAnswers
+          }
+        })
+      );
       router.push('/game-over')
     } else if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
@@ -201,6 +255,9 @@ export default function GamePageClient() {
     setIsAnswered(true)
     if (opt === currentQuestion.answer) {
       setScore((s) => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000))
+      setCorrectAnswers(prev => prev + 1)
+    } else {
+      setIncorrectAnswers(prev => prev + 1)
     }
   }
 

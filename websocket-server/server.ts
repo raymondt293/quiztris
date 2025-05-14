@@ -11,6 +11,14 @@ interface Room {
   currentQuestion: number;
   topic?: string;
   questions?: any[];
+  scores: PlayerScore[];
+}
+interface PlayerScore {
+  id: string;
+  name: string;
+  score: number;
+  correct: number;
+  incorrect: number;
 }
 
 const port = Number(process.env.PORT) || 3001;
@@ -26,6 +34,8 @@ wss.on('connection', (ws: WebSocket) => {
     let data: any;
     try { data = JSON.parse(raw); } catch { return; }
 
+    console.log('Received message:', data.type);
+
     // ─── CREATE ROOM ───────────────────────────────────────────
     if (data.type === 'CREATE_ROOM') {
       const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -37,6 +47,7 @@ wss.on('connection', (ws: WebSocket) => {
         sockets: { [clientId]: ws },
         gameStarted: false,
         currentQuestion: 0,
+        scores: [],
       };
       ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId }));
       broadcastToRoom(roomCode, {
@@ -226,6 +237,27 @@ wss.on('connection', (ws: WebSocket) => {
           }
         }
       }
+
+      return;
+    }
+
+    // ─── SUBMIT SCORE ──────────────────────────────────────────
+    if (data.type === 'SUBMIT_SCORE') {
+      const room = rooms[data.roomCode];
+      if (!room) return;
+
+      broadcastToRoom(data.roomCode, {
+        type: 'ADD_SCORE',
+        playerId: data.score.id,
+        score: {
+          id: data.score.id,
+          name: data.score.name,
+          score: data.score.score,
+          correct: data.score.correct,
+          incorrect: data.score.incorrect
+        }
+      });
+
       return;
     }
   });
