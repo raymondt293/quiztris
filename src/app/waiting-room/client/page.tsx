@@ -9,6 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Badge } from "~/components/ui/badge";
 import { Copy, LogOut, Crown, UserX, Users } from "lucide-react";
 import { useToast } from "~/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "~/components/ui/dialog";
+import { Label } from "~/components/ui/label";
+import { Input } from "~/components/ui/input";
 
 // Types
 type Player = { id: string; name: string };
@@ -38,6 +41,9 @@ function WaitingRoomClient() {
   const [hostId, setHostId] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [gameMode, setGameMode] = useState("normal");
+  const [showTopicDialog, setShowTopicDialog] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [isStartingGame, setIsStartingGame] = useState(false);
 
   const mode = params.get("mode") ?? "create";
   const codeParam = params.get("code") ?? "";
@@ -51,6 +57,15 @@ function WaitingRoomClient() {
   const roomRef = useRef(codeParam);
   const joined = useRef(false);
 
+  const GAME_MODE_LABELS: Record<string, string> = {
+    normal: "Normal Game",
+    "1v1": "1v1 Duel",
+    "5v5": "5v5 Team Battle",
+    "sudden-death": "Sudden Death",
+    practice: "Practice Mode",
+  };
+  
+
   useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
   useEffect(() => { hostIdRef.current = hostId; }, [hostId]);
 
@@ -59,16 +74,16 @@ function WaitingRoomClient() {
 
     socket.onopen = () => {
       if (mode === "create") {
-        socket.send(JSON.stringify({
-          type: "CREATE_ROOM",
+        socket.send(JSON.stringify({ 
+          type: "CREATE_ROOM", 
           name: nameParam,
-          gameMode: gameModeParam
+          gameMode: gameModeParam 
         }));
       } else {
-        socket.send(JSON.stringify({
-          type: "JOIN_ROOM",
-          roomCode: codeParam,
-          name: nameParam
+        socket.send(JSON.stringify({ 
+          type: "JOIN_ROOM", 
+          roomCode: codeParam, 
+          name: nameParam 
         }));
       }
     };
@@ -153,7 +168,47 @@ function WaitingRoomClient() {
   };
 
   const startGame = () => {
-    ws?.send(JSON.stringify({ type: "START_GAME", roomCode }));
+    setShowTopicDialog(true);
+  };
+
+  const handleStartGame = async () => {
+    if (!topic.trim()) {
+      toast({ title: "Error", description: "Please enter a topic", variant: "destructive" });
+      return;
+    }
+
+    setIsStartingGame(true);
+    try {
+      // First create the quiz and get questions
+      const response = await fetch("/api/create-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create quiz");
+      }
+
+      const { quizId } = await response.json();
+      
+      // Then start the game with the quiz ID
+      ws?.send(JSON.stringify({ 
+        type: "START_GAME", 
+        roomCode,
+        quizId 
+      }));
+      
+      setShowTopicDialog(false);
+    } catch (error) {
+      toast({ 
+        title: "Error", 
+        description: "Failed to start game. Please try again.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsStartingGame(false);
+    }
   };
 
   const sendMessage = () => {
@@ -286,6 +341,32 @@ function WaitingRoomClient() {
           </div>
         </div>
       </div>
+
+      <Dialog open={showTopicDialog} onOpenChange={setShowTopicDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enter Quiz Topic</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="topic">Topic</Label>
+            <Input
+              id="topic"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g., World History, Science, Movies..."
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTopicDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleStartGame} disabled={isStartingGame}>
+              {isStartingGame ? "Starting..." : "Start Game"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

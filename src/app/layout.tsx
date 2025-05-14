@@ -5,6 +5,7 @@ import {
 import { type Metadata } from "next";
 import { Geist } from "next/font/google";
 import NavBar from "~/components/navbar";
+import { Toaster } from "~/components/ui/toaster"
 
 export const metadata: Metadata = {
   title: "Quiztris",
@@ -26,6 +27,7 @@ export default function RootLayout({
         <body>
             <NavBar /> 
             {children}
+            <Toaster />
         </body>
       </html>
     </ClerkProvider>

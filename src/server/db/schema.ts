@@ -13,7 +13,7 @@ export const createTable = singlestoreTableCreator(
 );
 
 export const users = createTable("users_table", {
-  id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull(),
   number_of_wins: int("number_of_wins").default(0),
@@ -23,7 +23,7 @@ export const quizzes = createTable(
   "quizzes",
   {
     id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
-    host_id: bigint("host_id", { mode: "bigint" }).notNull(), // references users.id
+    host_id: text("host_id").notNull(), // references users.id
     created_at: timestamp("created_at").defaultNow(),
     title: text("title").notNull(),
     questions: int("questions").default(0),
@@ -63,7 +63,7 @@ export const games = createTable(
   {
     id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
     quiz_id: bigint("quiz_id", { mode: "bigint" }).notNull(), // references quizzes.id
-    host_id: bigint("host_id", { mode: "bigint" }).notNull(), // references users.id
+    host_id: text("host_id").notNull(), // references users.id
     game_pin: text("game_pin").notNull(),
     is_active: boolean("is_active").default(true),
     started_at: timestamp("started_at"),
@@ -81,7 +81,7 @@ export const game_participants = createTable(
   {
     id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
     game_id: bigint("game_id", { mode: "bigint" }).notNull(), // references games.id
-    user_id: bigint("user_id", { mode: "bigint" }).notNull(), // references users.id
+    user_id: text("user_id").notNull(), // references users.id
     nickname: text("nickname"),
     joined_at: timestamp("joined_at").defaultNow(),
   },
@@ -95,7 +95,7 @@ export const submissions = createTable(
   "submissions",
   {
     id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
-    participant_id: bigint("participant_id", { mode: "bigint" }).notNull(), // references game_participants.id
+    participant_id: text("participant_id").notNull(), // references game_participants.id
     question_id: bigint("question_id", { mode: "bigint" }).notNull(), // references questions.id
     answer_id: bigint("answer_id", { mode: "bigint" }).notNull(), // references answers.id
     submitted_at: timestamp("submitted_at").defaultNow(),
@@ -112,7 +112,7 @@ export const scores = createTable(
   "scores",
   {
     id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
-    participant_id: bigint("participant_id", { mode: "bigint" }).notNull(), // references game_participants.id
+    participant_id: text("participant_id").notNull(), // references game_participants.id
     total_score: int("total_score").default(0),
     updated_at: timestamp("updated_at").defaultNow(),
   },
