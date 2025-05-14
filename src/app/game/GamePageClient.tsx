@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Progress } from '~/components/ui/progress'
+import { toast } from '~/hooks/use-toast'
 
 // ─── Types ───────────────────────────────────────────────────────
 type QuizQuestion = { question: string; options: string[]; answer: string }
@@ -14,10 +15,13 @@ type ServerMessage =
   | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
   | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
   | { type: 'ERROR'; message: string }
-  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number }
-  | { type: 'NEXT_QUESTION'; questionIndex: number }
+  | { type: 'GAME_START'; startTimestamp: number; gameMode: string; quizId: string }
+  | { type: 'QUESTION_STACKED'; playerId: string; question: QuizQuestion }
+  | { type: 'GAME_OVER'; winner: string }
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
+  | { type: 'ROOM_CREATED'; roomCode: string; playerId: string }
+  | { type: 'ROOM_JOINED'; roomCode: string; playerId: string }
 
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_TIME_LIMIT = 20
@@ -33,6 +37,9 @@ export default function GamePageClient() {
   // ─── Room & Host ───────────────────────────────────────────
   const [players, setPlayers] = useState<Player[]>([])
   const [hostId, setHostId] = useState<string>('')
+  const [gameMode, setGameMode] = useState<string>('normal')
+  const [playerId, setPlayerId] = useState<string>('')
+  const [quizId, setQuizId] = useState<string>('')
 
   // ─── Chat ───────────────────────────────────────────────────
   const [chat, setChat] = useState<ChatMessage[]>([])
@@ -43,11 +50,12 @@ export default function GamePageClient() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
   const [questionsLoaded, setQuestionsLoaded] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
-  const [questionNumber, setQuestionNumber] = useState(0)
+  const [questionNumber, setQuestionNumber] = useState(1)
   const [timeLeft, setTimeLeft] = useState(0)
   const [isAnswered, setIsAnswered] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
   const [score, setScore] = useState(0)
+  const [stackedQuestions, setStackedQuestions] = useState<QuizQuestion[]>([])
   const startRef = useRef<number>(0)
 
   // ─── Connect & Handle Server Messages ───────────────────────
@@ -92,22 +100,32 @@ export default function GamePageClient() {
           router.push('/')
           break
         case 'GAME_START': {
-          // Sync start timestamp and question index
           const elapsed = Math.floor((Date.now() - data.startTimestamp) / 1000)
           const remaining = DEFAULT_TIME_LIMIT - elapsed
           startRef.current = data.startTimestamp
-          setQuestionNumber(data.questionIndex)
+          setQuestionNumber(1)
           setTimeLeft(Math.max(remaining, 0))
           setIsAnswered(false)
           setSelectedAnswer(null)
           setGameStarted(true)
+          setGameMode(data.gameMode)
+          setQuizId(data.quizId)
           break
         }
-        case 'NEXT_QUESTION': {
-          setQuestionNumber(data.questionIndex)
-          setIsAnswered(false)
-          setSelectedAnswer(null)
-          setTimeLeft(DEFAULT_TIME_LIMIT)
+        case 'ROOM_CREATED':
+        case 'ROOM_JOINED':
+          setPlayerId(data.playerId)
+          break
+        case 'QUESTION_STACKED': {
+          if (data.playerId === playerId) {
+            setStackedQuestions(prev => [...prev, data.question])
+          }
+          break
+        }
+        case 'GAME_OVER': {
+          const winner = players.find(p => p.id === data.winner)
+          alert(winner?.id === playerId ? 'You won!' : `${winner?.name} won!`)
+          router.push('/')
           break
         }
         case 'ROOM_CLOSED':
@@ -126,30 +144,30 @@ export default function GamePageClient() {
     return () => {
       socket.close()
     }
-  }, [roomCode, playerName, isHostFlag, router])
+  }, [roomCode, playerName, isHostFlag, router, players, toast])
 
-  // ─── Fetch Questions on Start ───────────────────────────────▀
+  // ─── Fetch Questions on Start ───────────────────────────────
   useEffect(() => {
-    if (!gameStarted || questionsLoaded) return
+    if (!gameStarted || questionsLoaded || !quizId) return;
     void (async () => {
       try {
-        const res = await fetch('/api/generate-question', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
-        })
-        const body = await res.json() as { questions?: QuizQuestion[]; error?: string }
-        if (body.questions) {
-          setQuestions(body.questions)
-          setQuestionsLoaded(true)
-        } else {
-          console.error('AI error:', body.error)
+        const res = await fetch(`/api/quiz/${quizId}/questions`);
+        if (!res.ok) {
+          throw new Error("Failed to fetch questions");
         }
+        const data = await res.json();
+        setQuestions(data.questions);
+        setQuestionsLoaded(true);
       } catch (err) {
-        console.error('Failed to load questions', err)
+        console.error('Failed to load questions', err);
+        toast({
+          title: "Error",
+          description: "Failed to load questions. Please try again.",
+          variant: "destructive"
+        });
       }
-    })()
-  }, [gameStarted, questionsLoaded])
+    })();
+  }, [gameStarted, questionsLoaded, quizId, toast]);
 
   // ─── Countdown & Auto‐Advance ───────────────────────────────
   useEffect(() => {
@@ -158,24 +176,46 @@ export default function GamePageClient() {
       const t = setTimeout(() => setTimeLeft((t) => t - 1), 1000)
       return () => clearTimeout(t)
     }
-    // Time expired: auto-send NEXT_QUESTION or end
+    // Time expired: auto-advance
+    if (gameMode === '1v1') {
+      // In 1v1 mode, we don't auto-advance - questions are handled by ANSWER_QUESTION
+      return
+    }
     if (questionNumber >= TOTAL_QUESTIONS) {
       router.push('/game-over')
     } else if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
       wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
     }
-  }, [gameStarted, timeLeft, questionNumber, router, roomCode])
+  }, [gameStarted, timeLeft, questionNumber, router, roomCode, gameMode])
 
   // ─── Answer Selection ───────────────────────────────────────
-  const currentQuestion =
-    questions[questionNumber - 1] ?? { ...questions[0], question: 'Loading...', options: [], answer: '' }
+  const currentQuestion = gameMode === '1v1' 
+    ? stackedQuestions[0] ?? questions[questionNumber - 1] ?? { question: 'Loading...', options: [], answer: '' }
+    : questions[questionNumber - 1] ?? { question: 'Loading...', options: [], answer: '' }
+
   function handleAnswer(opt: string) {
     if (!gameStarted || isAnswered) return
     setSelectedAnswer(opt)
     setIsAnswered(true)
-    if (opt === currentQuestion.answer) {
-      setScore((s) => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000))
+    
+    if (gameMode === '1v1') {
+      const isCorrect = opt === currentQuestion.answer
+      if (isCorrect) {
+        // Remove the answered question from stacked questions
+        setStackedQuestions(prev => prev.slice(1))
+      }
+      
+      wsRef.current?.send(JSON.stringify({
+        type: 'ANSWER_QUESTION',
+        roomCode,
+        isCorrect,
+        question: currentQuestion
+      }))
+    } else {
+      if (opt === currentQuestion.answer) {
+        setScore((s) => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000))
+      }
     }
   }
 
@@ -194,6 +234,9 @@ export default function GamePageClient() {
         <div className="mb-4 flex justify-between">
           <span>Question {questionNumber}/{TOTAL_QUESTIONS}</span>
           <span>Score: {score}</span>
+          {gameMode === '1v1' && (
+            <span>Stacked Questions: {stackedQuestions.length}</span>
+          )}
         </div>
         <div className="mb-4">
           <Progress value={(timeLeft / DEFAULT_TIME_LIMIT) * 100} className="h-2" />

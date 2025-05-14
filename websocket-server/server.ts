@@ -1,6 +1,12 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer: string;
+}
+
 interface Player { id: string; name: string }
 interface Room {
   host: string;
@@ -9,6 +15,10 @@ interface Room {
   gameStarted: boolean;
   startTimestamp?: number;
   currentQuestion: number;
+  gameMode: string;
+  playerQuestions: Record<string, QuizQuestion[]>;
+  stackedQuestions: Record<string, QuizQuestion[]>;
+  quizId?: string;
 }
 
 const port = Number(process.env.PORT) || 3001;
@@ -35,6 +45,9 @@ wss.on('connection', (ws: WebSocket) => {
         sockets: { [clientId]: ws },
         gameStarted: false,
         currentQuestion: 0,
+        gameMode: data.gameMode || 'normal',
+        playerQuestions: {},
+        stackedQuestions: {},
       };
       
       ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId }));
@@ -85,7 +98,7 @@ wss.on('connection', (ws: WebSocket) => {
         message: `${data.name} joined the room.`,
       });
 
-      // If the game’s underway, sync them to the current question
+      // If the game's underway, sync them to the current question
       if (room.gameStarted && room.startTimestamp) {
         ws.send(JSON.stringify({
           type: "GAME_START",
@@ -123,10 +136,22 @@ wss.on('connection', (ws: WebSocket) => {
       room.gameStarted = true;
       room.currentQuestion = 1;
       room.startTimestamp = Date.now();
+      room.quizId = data.quizId;
+
+      // Initialize questions for 1v1 mode
+      if (room.gameMode === '1v1') {
+        room.players.forEach(player => {
+          room.playerQuestions[player.id] = [];
+          room.stackedQuestions[player.id] = [];
+        });
+      }
+
       broadcastToRoom(data.roomCode, {
         type: 'GAME_START',
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
+        gameMode: room.gameMode,
+        quizId: room.quizId,
       });
       return;
     }
@@ -142,6 +167,44 @@ wss.on('connection', (ws: WebSocket) => {
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
       });
+      return;
+    }
+
+    // ─── ANSWER QUESTION ───────────────────────────────────────
+    if (data.type === 'ANSWER_QUESTION') {
+      const room = rooms[data.roomCode];
+      if (!room || !room.gameStarted) return;
+
+      if (room.gameMode === '1v1') {
+        const isCorrect = data.isCorrect;
+        const question = data.question;
+        const opponentId = room.players.find(p => p.id !== clientId)?.id;
+
+        if (isCorrect && opponentId) {
+          // Add the question to opponent's stack
+          room.stackedQuestions[opponentId] = [...(room.stackedQuestions[opponentId] || []), question];
+          
+          // Notify opponent about the new stacked question
+          const opponentWs = room.sockets[opponentId];
+          if (opponentWs) {
+            opponentWs.send(JSON.stringify({
+              type: 'QUESTION_STACKED',
+              playerId: opponentId,
+              question: question
+            }));
+          }
+
+          // Check if the current player has won
+          const currentPlayerQuestions = room.playerQuestions[clientId] || [];
+          const currentPlayerStacked = room.stackedQuestions[clientId] || [];
+          if (currentPlayerQuestions.length === 0 && currentPlayerStacked.length === 0) {
+            broadcastToRoom(data.roomCode, {
+              type: 'GAME_OVER',
+              winner: clientId
+            });
+          }
+        }
+      }
       return;
     }
 

@@ -8,6 +8,13 @@ export async function GET(
   { params }: { params: { quizId: string } }
 ) {
   try {
+    if (!params.quizId) {
+      return NextResponse.json(
+        { error: "Quiz ID is required" },
+        { status: 400 }
+      );
+    }
+
     const quizId = BigInt(params.quizId);
 
     // Get all questions for the quiz
