@@ -6,7 +6,7 @@ export default {
   // ── where to write SQL migration files ──────────────────────────
   out:          "./drizzle/migrations",
 
-  // ── point at your TypeScript schema definitions ─────────────────
+  // ── point at TypeScript schema definitions ─────────────────
   schema:       "./src/server/db/schema.ts",
 
   // ── SingleStore dialect ─────────────────────────────────────────
@@ -15,13 +15,13 @@ export default {
   // ── only manage tables matching this glob ───────────────────────
   tablesFilter: ["quiztris_*"],
 
-  // ── your DB connection (loaded from env) ────────────────────────
+  // ──  DB connection (loaded from env) ────────────────────────
   dbCredentials: {
     host:     env.SINGLESTORE_HOST,
     port:     Number(env.SINGLESTORE_PORT),
     user:     env.SINGLESTORE_USER,
     password: env.SINGLESTORE_PASS,
     database: env.SINGLESTORE_DB_NAME,
-    ssl:      {},   // or supply a CA bundle here if needed
+    ssl:      {},   
   },
 } satisfies Config
