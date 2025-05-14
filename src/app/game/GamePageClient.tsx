@@ -18,6 +18,7 @@ type ServerMessage =
   | { type: 'NEXT_QUESTION'; questionIndex: number }
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
+  | { type: 'QUESTIONS_SHARED'; questions: QuizQuestion[] }
 
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_TIME_LIMIT = 20
@@ -112,6 +113,10 @@ export default function GamePageClient() {
           setTimeLeft(DEFAULT_TIME_LIMIT)
           break
         }
+        case 'QUESTIONS_SHARED':
+          setQuestions(data.questions);
+          setQuestionsLoaded(true);
+          break;
         case 'ROOM_CLOSED':
           alert('Host has left. Room closed.')
           socket.close()
@@ -130,28 +135,46 @@ export default function GamePageClient() {
     }
   }, [roomCode, playerName, isHostFlag, router])
 
-  // ─── Fetch Questions on Start ───────────────────────────────▀
   useEffect(() => {
-    if (!gameStarted || questionsLoaded) return
+    if (!gameStarted || !isHostFlag || questionsLoaded) return;
+
     void (async () => {
       try {
         const res = await fetch('/api/generate-question', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ topic, count: TOTAL_QUESTIONS }),
-        })
-        const body = await res.json() as { questions?: QuizQuestion[]; error?: string }
+        });
+        const body = await res.json() as { questions?: QuizQuestion[]; error?: string };
+
         if (body.questions) {
-          setQuestions(body.questions)
-          setQuestionsLoaded(true)
+          setQuestions(body.questions);
+          setQuestionsLoaded(true);
+
+          // Send questions to server for distribution to all players
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'SHARE_QUESTIONS',
+                roomCode,
+                questions: body.questions
+              })
+            );
+          }
         } else {
-          console.error('AI error:', body.error)
+          console.error('AI error:', body.error);
         }
       } catch (err) {
-        console.error('Failed to load questions', err)
+        console.error('Failed to load questions', err);
       }
-    })()
-  }, [gameStarted, questionsLoaded, topic])
+    })();
+  }, [gameStarted, isHostFlag, questionsLoaded, topic, roomCode]);
+
+  // Modify the existing question-fetching useEffect for non-hosts
+  useEffect(() => {
+    if (!gameStarted || questionsLoaded || isHostFlag) return;
+    // Non-hosts don't fetch questions - they wait to receive them from the server
+  }, [gameStarted, questionsLoaded, isHostFlag]);
 
   // ─── Countdown & Auto‐Advance ───────────────────────────────
   useEffect(() => {

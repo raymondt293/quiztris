@@ -10,6 +10,7 @@ interface Room {
   startTimestamp?: number;
   currentQuestion: number;
   topic?: string;
+  questions?: any[];
 }
 
 const port = Number(process.env.PORT) || 3001;
@@ -37,7 +38,6 @@ wss.on('connection', (ws: WebSocket) => {
         gameStarted: false,
         currentQuestion: 0,
       };
-      
       ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId }));
       broadcastToRoom(roomCode, {
         type: 'PLAYER_LIST',
@@ -92,7 +92,14 @@ wss.on('connection', (ws: WebSocket) => {
           type: "GAME_START",
           startTimestamp: room.startTimestamp,
           questionIndex: room.currentQuestion,
+          topic: room.topic,
         }));
+        if (room.questions) {
+          ws.send(JSON.stringify({
+            type: "QUESTIONS_SHARED",
+            questions: room.questions
+          }));
+        }
       }
       return;
     }
@@ -142,9 +149,25 @@ wss.on('connection', (ws: WebSocket) => {
       room.currentQuestion++;
       room.startTimestamp = Date.now();
       broadcastToRoom(data.roomCode, {
-        type: 'GAME_START',
+        type: 'NEXT_QUESTION',
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
+      });
+      return;
+    }
+
+    // ─── SHARE QUESTIONS ─────────────────────────────────────────
+    if (data.type === 'SHARE_QUESTIONS') {
+      const room = rooms[data.roomCode];
+      if (!room || room.host !== clientId) return;
+
+      // Store questions at the room level
+      room.questions = data.questions;
+
+      // Broadcast questions to all players in the room
+      broadcastToRoom(data.roomCode, {
+        type: 'QUESTIONS_SHARED',
+        questions: data.questions
       });
       return;
     }
