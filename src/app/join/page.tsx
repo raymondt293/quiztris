@@ -30,7 +30,7 @@ export default function JoinPage({ searchParams }: { searchParams: { code?: stri
     if (userId && user) {
       const displayName = user.fullName ?? user.username ?? user.firstName ?? "Player"
       const encodedName = encodeURIComponent(displayName)
-      router.push(`/waiting-room/client?code=${gameCode}&mode=create&name=${encodedName}`)
+      router.push(`/waiting-room/client?code=${gameCode}&mode=create&name=${encodedName}&gameMode=${gameMode}`)
     }
   }, [userId, user, gameCode, gameMode, router])
 

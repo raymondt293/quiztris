@@ -37,10 +37,14 @@ function WaitingRoomClient() {
   const [playerId, setPlayerId] = useState("");
   const [hostId, setHostId] = useState("");
   const [isCopied, setIsCopied] = useState(false);
+  const [gameMode, setGameMode] = useState("normal");
 
   const mode = params.get("mode") ?? "create";
   const codeParam = params.get("code") ?? "";
-  const nameParam = params.get("name") ?? user?.username ?? user?.fullName ??"";
+  const nameParam = params.get("name") ?? user?.username ?? user?.fullName ?? "";
+  const gameModeParam = params.get("gameMode") ?? "normal";
+  console.log("Game mode from URL:", gameModeParam);
+
 
   const playerIdRef = useRef(playerId);
   const hostIdRef = useRef(hostId);
@@ -55,9 +59,17 @@ function WaitingRoomClient() {
 
     socket.onopen = () => {
       if (mode === "create") {
-        socket.send(JSON.stringify({ type: "CREATE_ROOM", name: nameParam }));
+        socket.send(JSON.stringify({
+          type: "CREATE_ROOM",
+          name: nameParam,
+          gameMode: gameModeParam
+        }));
       } else {
-        socket.send(JSON.stringify({ type: "JOIN_ROOM", roomCode: codeParam, name: nameParam }));
+        socket.send(JSON.stringify({
+          type: "JOIN_ROOM",
+          roomCode: codeParam,
+          name: nameParam
+        }));
       }
     };
 
@@ -71,10 +83,14 @@ function WaitingRoomClient() {
           roomRef.current = data.roomCode;
           setPlayerId(data.playerId);
           setHostId(data.playerId);
-          router.replace(
-            `/waiting-room/client?code=${data.roomCode}` +
-              `&mode=create&name=${encodeURIComponent(nameParam)}`
-          );
+          setGameMode(gameModeParam);
+          const newParams = new URLSearchParams({
+            code: data.roomCode,
+            mode: "create",
+            name: nameParam,
+            gameMode: gameModeParam,
+          });
+          router.replace(`/waiting-room/client?${newParams.toString()}`);
           break;
         case "ROOM_JOINED":
           setRoomCode(data.roomCode);
@@ -111,7 +127,7 @@ function WaitingRoomClient() {
     };
 
     setWs(socket);
-  }, [mode, codeParam, nameParam, router]);
+  }, [mode, codeParam, nameParam, gameModeParam, router]);
 
   useEffect(() => {
     if (!joined.current && nameParam) {
@@ -171,7 +187,9 @@ function WaitingRoomClient() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <Badge variant="secondary" className="text-sm">Waiting Mode</Badge>
+            <Badge variant="secondary" className="text-sm">
+              {gameMode === '1v1' ? '1v1 Duel' : 'Normal Mode'}
+            </Badge>
             <Button variant="outline" className="text-red-500" onClick={leaveRoom}>
               <LogOut className="mr-2 h-4 w-4" /> Leave Room
             </Button>
@@ -189,9 +207,14 @@ function WaitingRoomClient() {
                   <h2 className="text-xl font-semibold">Players ({players.length})</h2>
                 </div>
                 {playerId === hostId && (
-                  <Button onClick={startGame}>
-                    Start Game
-                  </Button>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-600">
+                      Game Mode: {gameMode === '1v1' ? '1v1 Duel' : 'Normal'}
+                    </span>
+                    <Button onClick={startGame}>
+                      Start Game
+                    </Button>
+                  </div>
                 )}
               </div>
               <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" style={{ maxHeight: "400px" }}>
