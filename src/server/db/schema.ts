@@ -14,10 +14,15 @@ export const createTable = singlestoreTableCreator(
 
 export const users = createTable("users_table", {
   id: bigint("id", { mode: "bigint" }).primaryKey().autoincrement(),
+  clerk_id: text("clerk_id").notNull(), 
   name: text("name").notNull(),
   email: text("email").notNull(),
   number_of_wins: int("number_of_wins").default(0),
-});
+  },
+  (t) => [
+    index("clerk_id_index").on(t.clerk_id),    // index so lookups are fast
+  ]
+);
 
 export const quizzes = createTable(
   "quizzes",
