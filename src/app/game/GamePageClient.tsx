@@ -14,10 +14,13 @@ type ServerMessage =
   | { type: 'PLAYER_LIST'; players: Player[]; hostId: string }
   | { type: 'CHAT_MESSAGE'; sender?: string; message: string }
   | { type: 'ERROR'; message: string }
-  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number }
+  | { type: 'GAME_START'; startTimestamp: number; questionIndex: number; topic: string }
   | { type: 'NEXT_QUESTION'; questionIndex: number }
   | { type: 'ROOM_CLOSED' }
   | { type: 'KICKED' }
+  | { type: 'QUESTIONS_SHARED'; questions: QuizQuestion[] }
+  | { type: 'ADD_SCORE'; playerId: string; score: number }
+  | { type: 'CURRENT_PLAYER'; playerId: string }
 
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_TIME_LIMIT = 20
@@ -28,6 +31,7 @@ export default function GamePageClient() {
   const params = useSearchParams()
   const roomCode = params.get('code') ?? ''
   const playerName = params.get('name') ?? ''
+  const [playerId, setPlayerId] = useState<string>('')
   const isHostFlag = params.get('isHost') === 'true'
 
   // ─── Room & Host ───────────────────────────────────────────
@@ -48,7 +52,11 @@ export default function GamePageClient() {
   const [isAnswered, setIsAnswered] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
   const [score, setScore] = useState(0)
+  const [topic, setTopic] = useState<string>('')
   const startRef = useRef<number>(0)
+  const [correctAnswers, setCorrectAnswers] = useState(0)
+  const [incorrectAnswers, setIncorrectAnswers] = useState(0)
+  const [randomizedOptions, setRandomizedOptions] = useState<string[]>([])
 
   // ─── Connect & Handle Server Messages ───────────────────────
   useEffect(() => {
@@ -77,6 +85,12 @@ export default function GamePageClient() {
         case 'PLAYER_LIST':
           setPlayers(data.players)
           setHostId(data.hostId)
+
+          // set the playerId; either from the host or localStorage
+          setPlayerId(isHostFlag ? data.hostId : (localStorage.getItem('playerId') ?? ''))
+
+          // let's also reset the scores in localStorage if this is a new game
+          localStorage.removeItem('gameScores');
           break
         case 'CHAT_MESSAGE': {
           const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -101,6 +115,7 @@ export default function GamePageClient() {
           setIsAnswered(false)
           setSelectedAnswer(null)
           setGameStarted(true)
+          setTopic(data.topic)
           break
         }
         case 'NEXT_QUESTION': {
@@ -110,16 +125,47 @@ export default function GamePageClient() {
           setTimeLeft(DEFAULT_TIME_LIMIT)
           break
         }
+        case 'QUESTIONS_SHARED':
+          setQuestions(data.questions);
+          setQuestionsLoaded(true);
+          break;
         case 'ROOM_CLOSED':
           alert('Host has left. Room closed.')
           socket.close()
-          router.push('/')
+          router.push('/game-over')
           break
         case 'KICKED':
           alert('You were kicked from the room.')
           socket.close()
           router.push('/')
           break
+        case 'ADD_SCORE':
+          console.log("RECEIVED FINAL SCORE OF PLAYER: ", data.playerId);
+
+          // Get existing scores from localStorage
+          const existingScoresStr = localStorage.getItem('gameScores');
+          let allScores = [];
+
+          if (existingScoresStr) {
+            try {
+              allScores = JSON.parse(existingScoresStr);
+            } catch (e) {
+              console.error("Error parsing existing scores:", e);
+              allScores = [];
+            }
+          }
+
+          // Check if this player's score already exists
+          const existingIndex = allScores.findIndex((s: any) => s.id === data.playerId);
+          if (existingIndex >= 0) {
+            allScores[existingIndex] = data.score;
+          } else {
+            allScores.push(data.score);
+          }
+
+          // save back to localStorage
+          localStorage.setItem('gameScores', JSON.stringify(allScores));
+          break;
       }
     })
 
@@ -128,28 +174,47 @@ export default function GamePageClient() {
     }
   }, [roomCode, playerName, isHostFlag, router])
 
-  // ─── Fetch Questions on Start ───────────────────────────────▀
+  // ─── Fetch Questions (Host or Player) ────────────────────────────────────────
   useEffect(() => {
-    if (!gameStarted || questionsLoaded) return
+    if (!gameStarted || !isHostFlag || questionsLoaded) return;
+
     void (async () => {
       try {
         const res = await fetch('/api/generate-question', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: 'General Knowledge', count: TOTAL_QUESTIONS }),
-        })
-        const body = await res.json() as { questions?: QuizQuestion[]; error?: string }
+          body: JSON.stringify({ topic, count: TOTAL_QUESTIONS }),
+        });
+        const body = await res.json() as { questions?: QuizQuestion[]; error?: string };
+
         if (body.questions) {
-          setQuestions(body.questions)
-          setQuestionsLoaded(true)
+          setQuestions(body.questions);
+          setQuestionsLoaded(true);
+
+          // Send questions to server for distribution to all players
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'SHARE_QUESTIONS',
+                roomCode,
+                questions: body.questions
+              })
+            );
+          }
         } else {
-          console.error('AI error:', body.error)
+          console.error('AI error:', body.error);
         }
       } catch (err) {
-        console.error('Failed to load questions', err)
+        console.error('Failed to load questions', err);
       }
-    })()
-  }, [gameStarted, questionsLoaded])
+    })();
+  }, [gameStarted, isHostFlag, questionsLoaded, topic, roomCode]);
+
+  // Modify the existing question-fetching useEffect for non-hosts
+  useEffect(() => {
+    if (!gameStarted || questionsLoaded || isHostFlag) return;
+    // Non-hosts don't fetch questions - they wait to receive them from the server
+  }, [gameStarted, questionsLoaded, isHostFlag]);
 
   // ─── Countdown & Auto‐Advance ───────────────────────────────
   useEffect(() => {
@@ -160,22 +225,49 @@ export default function GamePageClient() {
     }
     // Time expired: auto-send NEXT_QUESTION or end
     if (questionNumber >= TOTAL_QUESTIONS) {
+      // Game over: send scores to server so it can broadcast to all players
+      // wsRef.current! b/c the websocket should be open...
+      wsRef.current!.send(
+        JSON.stringify({
+          type: 'SUBMIT_SCORE',
+          roomCode,
+          score: {
+            id: playerId,
+            name: playerName,
+            score: score,
+            correct: correctAnswers,
+            incorrect: incorrectAnswers
+          }
+        })
+      );
       router.push('/game-over')
     } else if (wsRef.current?.readyState === WebSocket.OPEN) {
       setIsAnswered(true)
       wsRef.current.send(JSON.stringify({ type: 'NEXT_QUESTION', roomCode }))
     }
-  }, [gameStarted, timeLeft, questionNumber, router, roomCode])
+  }, [gameStarted, timeLeft, questionNumber, router, roomCode, playerId, playerName, score, correctAnswers, incorrectAnswers])
 
-  // ─── Answer Selection ───────────────────────────────────────
+  // Get current question
   const currentQuestion =
     questions[questionNumber - 1] ?? { ...questions[0], question: 'Loading...', options: [], answer: '' }
+
+  // Randomize options when question changes
+  useEffect(() => {
+    if (currentQuestion.options.length > 0) {
+      setRandomizedOptions([...currentQuestion.options].sort(() => Math.random() - 0.5));
+    }
+  }, [currentQuestion]);
+
+  // ─── Answer Selection ───────────────────────────────────────
   function handleAnswer(opt: string) {
     if (!gameStarted || isAnswered) return
     setSelectedAnswer(opt)
     setIsAnswered(true)
     if (opt === currentQuestion.answer) {
       setScore((s) => s + Math.ceil((timeLeft / DEFAULT_TIME_LIMIT) * 1000))
+      setCorrectAnswers(prev => prev + 1)
+    } else {
+      setIncorrectAnswers(prev => prev + 1)
     }
   }
 
@@ -202,7 +294,7 @@ export default function GamePageClient() {
         <Card className="flex-1 p-6 mb-4 flex flex-col">
           <h2 className="text-xl font-bold mb-8 text-center">{currentQuestion.question}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-auto">
-            {currentQuestion.options.map((o, i) => (
+            {randomizedOptions.map((o, i) => (
               <Button
                 key={i}
                 onClick={() => handleAnswer(o)}

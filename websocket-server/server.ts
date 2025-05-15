@@ -9,6 +9,16 @@ interface Room {
   gameStarted: boolean;
   startTimestamp?: number;
   currentQuestion: number;
+  topic?: string;
+  questions?: any[];
+  scores: PlayerScore[];
+}
+interface PlayerScore {
+  id: string;
+  name: string;
+  score: number;
+  correct: number;
+  incorrect: number;
 }
 
 const port = Number(process.env.PORT) || 3001;
@@ -24,6 +34,8 @@ wss.on('connection', (ws: WebSocket) => {
     let data: any;
     try { data = JSON.parse(raw); } catch { return; }
 
+    console.log('Received message:', data.type);
+
     // ─── CREATE ROOM ───────────────────────────────────────────
     if (data.type === 'CREATE_ROOM') {
       const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -35,8 +47,8 @@ wss.on('connection', (ws: WebSocket) => {
         sockets: { [clientId]: ws },
         gameStarted: false,
         currentQuestion: 0,
+        scores: [],
       };
-      
       ws.send(JSON.stringify({ type: 'ROOM_CREATED', roomCode, playerId: clientId }));
       broadcastToRoom(roomCode, {
         type: 'PLAYER_LIST',
@@ -91,7 +103,14 @@ wss.on('connection', (ws: WebSocket) => {
           type: "GAME_START",
           startTimestamp: room.startTimestamp,
           questionIndex: room.currentQuestion,
+          topic: room.topic,
         }));
+        if (room.questions) {
+          ws.send(JSON.stringify({
+            type: "QUESTIONS_SHARED",
+            questions: room.questions
+          }));
+        }
       }
       return;
     }
@@ -118,15 +137,18 @@ wss.on('connection', (ws: WebSocket) => {
 
     // ─── START GAME ────────────────────────────────────────────
     if (data.type === 'START_GAME') {
+      console.log('Received START_GAME:', data);
       const room = rooms[data.roomCode];
       if (!room || room.host !== clientId) return;
       room.gameStarted = true;
       room.currentQuestion = 1;
       room.startTimestamp = Date.now();
+      room.topic = data.topic
       broadcastToRoom(data.roomCode, {
         type: 'GAME_START',
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
+        topic: room.topic,
       });
       return;
     }
@@ -138,9 +160,25 @@ wss.on('connection', (ws: WebSocket) => {
       room.currentQuestion++;
       room.startTimestamp = Date.now();
       broadcastToRoom(data.roomCode, {
-        type: 'GAME_START',
+        type: 'NEXT_QUESTION',
         startTimestamp: room.startTimestamp,
         questionIndex: room.currentQuestion,
+      });
+      return;
+    }
+
+    // ─── SHARE QUESTIONS ─────────────────────────────────────────
+    if (data.type === 'SHARE_QUESTIONS') {
+      const room = rooms[data.roomCode];
+      if (!room || room.host !== clientId) return;
+
+      // Store questions at the room level
+      room.questions = data.questions;
+
+      // Broadcast questions to all players in the room
+      broadcastToRoom(data.roomCode, {
+        type: 'QUESTIONS_SHARED',
+        questions: data.questions
       });
       return;
     }
@@ -199,6 +237,27 @@ wss.on('connection', (ws: WebSocket) => {
           }
         }
       }
+
+      return;
+    }
+
+    // ─── SUBMIT SCORE ──────────────────────────────────────────
+    if (data.type === 'SUBMIT_SCORE') {
+      const room = rooms[data.roomCode];
+      if (!room) return;
+
+      broadcastToRoom(data.roomCode, {
+        type: 'ADD_SCORE',
+        playerId: data.score.id,
+        score: {
+          id: data.score.id,
+          name: data.score.name,
+          score: data.score.score,
+          correct: data.score.correct,
+          incorrect: data.score.incorrect
+        }
+      });
+
       return;
     }
   });
