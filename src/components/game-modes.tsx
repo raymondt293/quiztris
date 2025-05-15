@@ -18,20 +18,6 @@ const gameModes = [
     color: "bg-red-100 hover:bg-red-200 text-red-700",
   },
   {
-    name: "5v5",
-    icon: <Shield className="mr-2 h-4 w-4" />,
-    description: "Team battle",
-    href: "/join?mode=5v5",
-    color: "bg-green-100 hover:bg-green-200 text-green-700",
-  },
-  {
-    name: "Sudden Death",
-    icon: <Skull className="mr-2 h-4 w-4" />,
-    description: "One mistake and you're out",
-    href: "/join?mode=sudden-death",
-    color: "bg-purple-100 hover:bg-purple-200 text-purple-700",
-  },
-  {
     name: "Practice",
     icon: <Dumbbell className="mr-2 h-4 w-4" />,
     description: "Train without pressure",
