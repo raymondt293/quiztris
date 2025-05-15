@@ -13,7 +13,7 @@ A modern web application for creating and managing quizzes with real-time multip
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/quiztris.git
+git clone https://github.com/raymondt293/quiztris.git
 cd quiztris
 ```
 
